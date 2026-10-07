@@ -1,0 +1,13 @@
+{
+  "name": "lamplight",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "demo-icons": "node scripts/demo-icons.mjs"
+  },
+  "devDependencies": {
+    "@mdi/js": "^7.4.47",
+    "qrcode": "^1.5.4"
+  }
+}

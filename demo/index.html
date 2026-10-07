@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lamplight cards: demo</title>
+<style>
+  /* A stand-in for the blurred room photo the cards sit on: two lamps and a window. */
+  :root { --l-photo: radial-gradient(circle at 18% 28%, #c47a2c 0, transparent 34%), radial-gradient(circle at 84% 72%, #2f5577 0, transparent 40%),
+    radial-gradient(circle at 60% 18%, #8a5a2a 0, transparent 26%), #2a2622; }
+  body { margin: 0; background: #08090b; color: #b9b4ac; font: 16px/1.4 system-ui, sans-serif; }
+  header { padding: 32px 40px 8px; }
+  header h1 { margin: 0; color: #f4f2ee; font-weight: 600; }
+  header a { color: #80d8ff; }
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 28px; padding: 24px 40px 48px; }
+  figure { margin: 0; }
+  .tablet { width: 560px; height: 349px; overflow: hidden; border-radius: 18px; box-shadow: 0 0 0 10px #1b1c20, 0 30px 60px -20px #000; }
+  /* Each card is laid out at the tablet's 788×492 and scaled to fit the frame. */
+  .screen { --l-height: 492px; width: 788px; height: 492px; transform: scale(.7107); transform-origin: 0 0; }
+  figcaption { margin-top: 16px; } figcaption a { color: #f4f2ee; text-transform: capitalize; }
+  body.single header, body.single #gallery { display: none; }
+  #single { --l-height: 492px; width: 788px; height: 492px; overflow: hidden; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lamplight cards</h1>
+  <p>Six cards on a made-up home, with a stand-in Home Assistant. Tap around; nothing is connected.
+    <a href="https://github.com/HaydenGriffin/lamplight">Source and design system</a></p>
+</header>
+<div id="gallery"></div>
+<div id="single"></div>
+<script type="module" src="./demo.js"></script>
+</body>
+</html>

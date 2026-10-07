@@ -1,0 +1,9 @@
+Lamplight
+Copyright (c) 2026 Hayden Griffin. MIT License (see LICENSE).
+
+Bundled third-party material:
+
+- dist/*.woff2: Atkinson Hyperlegible Next (Braille Institute of America) and Lexend (The Lexend Project Authors),
+  SIL Open Font License 1.1. See dist/fonts-LICENSE.txt.
+- demo/icons.js: icon paths from Material Design Icons (https://pictogrammers.com/library/mdi/), Apache License 2.0.
+  In Home Assistant the cards use its own built-in icons.
