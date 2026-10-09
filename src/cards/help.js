@@ -19,12 +19,14 @@
  *           tap: false            # shown, not run (it needs your own words)
  * `run` is sent instead of `say` when they differ; `agent` sends one example to another agent; `note` adds a small line.
  */
+import { LamplightCard, define, esc } from '../core.js';
+
 const ASK_TIMEOUT_MS = 25000;
 const FOLLOW_UP_MS = 90000;
 const ARM_MS = 4000;
 const REPLY_MS = 7000;
 
-class LamplightHelpCard extends LamplightCard {
+export class LamplightHelpCard extends LamplightCard {
   setConfig(config) {
     if (!Array.isArray(config.categories) || !config.categories.length) throw new Error('categories is required');
     super.setConfig(config);

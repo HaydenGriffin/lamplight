@@ -1,31 +1,37 @@
-/* Lamplight core: the tokens, fonts, header, navigation and toast every card shares. See DESIGN.md.
+/* Lamplight core: the tokens, fonts, header, navigation and toast every card shares. See DESIGN.md, and README.md
+ * ("Building on Lamplight") for this module's API.
  * The cards are built for wall tablets (around 788×492 CSS px, landscape) and fill the screen: one card per view,
  * in a panel or a View Assist dashboard. */
-const VERSION = '1.0.0';
-const BASE = new URL('.', import.meta.url).href;
+export const VERSION = '1.1.0';
+
+/* Where the font files are: next to the file this code runs from (dist/ for the HACS bundle), unless the page sets
+   window.lamplightFontBase (a URL ending in "/") before loading it, e.g. a bundle that keeps its fonts elsewhere. */
+export const fontBase = () => globalThis.lamplightFontBase || new URL('.', import.meta.url).href;
 
 /* 'Lamplight Text' is Atkinson Hyperlegible Next for letters with Lexend for the ten digits: Atkinson's slashed zero
    reads as "Ø" from across a room, Lexend's plain one doesn't. Fonts must be registered on the document, not in a
    shadow root, for shadow DOM to use them. */
-const registerFonts = () => {
+export const registerFonts = (base = fontBase()) => {
   if (document.getElementById('lamplight-fonts')) return;
   const style = document.createElement('style');
   style.id = 'lamplight-fonts';
   style.textContent = `
-    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${BASE}ahn-latin.woff2) format('woff2')}
-    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${BASE}ahn-latin-ext.woff2) format('woff2');unicode-range:U+0100-024F,U+1E00-1EFF}
-    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${BASE}lexend-latin.woff2) format('woff2');unicode-range:U+0030-0039}
-    @font-face{font-family:Lexend;font-weight:200 800;font-display:swap;src:url(${BASE}lexend-latin.woff2) format('woff2')}`;
+    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${base}ahn-latin.woff2) format('woff2')}
+    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${base}ahn-latin-ext.woff2) format('woff2');unicode-range:U+0100-024F,U+1E00-1EFF}
+    @font-face{font-family:'Lamplight Text';font-weight:200 800;font-display:swap;src:url(${base}lexend-latin.woff2) format('woff2');unicode-range:U+0030-0039}
+    @font-face{font-family:Lexend;font-weight:200 800;font-display:swap;src:url(${base}lexend-latin.woff2) format('woff2')}`;
   document.head.appendChild(style);
 };
 registerFonts();
 
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* Local midnight of a date (for "today", "tomorrow" and day labels). */
+export const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+export const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /* Every colour goes through these properties (The One Token Rule). --l-page, --l-panel and --l-photo can be set from a
    theme or a parent card: --l-photo is a background image shown blurred behind the panels, --l-photo-show: 0 hides it. */
-const TOKENS = `
+export const TOKENS = `
   :host{display:block;
     --page:var(--l-page,#0b0c0f);--panel:var(--l-panel,rgba(22,24,29,.74));--panel-solid:#17191e;--raised:var(--l-raised,rgba(255,255,255,.08));--raised-2:var(--l-raised-2,rgba(255,255,255,.14));--line:rgba(255,255,255,.07);
     --text:#f4f2ee;--muted:#b9b4ac;--accent:#80d8ff;--accent-ink:#04222e;--warm:#ffc76b;--warm-ink:#2a1a04;--warm-rgb:255,186,84;--warm-soft:rgba(var(--warm-rgb),.16);--warm-glow:rgba(var(--warm-rgb),.45);--ok:#7ee2a8;--warn:#ff9d5c;--alert:#ff8a80;
@@ -34,7 +40,7 @@ const TOKENS = `
     --text-font:'Lamplight Text','Atkinson Hyperlegible Next',Roboto,Arial,sans-serif;--num:Lexend,'Atkinson Hyperlegible Next',sans-serif}`;
 
 /* The page, the photo layer, buttons, the header and the toast: the same on every card. */
-const BASE_CSS = `${TOKENS}
+export const BASE_CSS = `${TOKENS}
   *{box-sizing:border-box}
   ha-card{position:relative;height:var(--l-height,calc(100dvh - var(--l-top,0px)));min-height:420px;background:var(--page);color:var(--text);border:0;border-radius:0;display:flex;flex-direction:column;gap:10px;padding:12px 14px;overflow:hidden;font-family:var(--text-font);font-size:19px}
   ha-card::before{content:'';position:absolute;inset:-48px;z-index:0;background:var(--l-photo,none) center/cover no-repeat;filter:blur(26px) brightness(.36) saturate(1.15);opacity:var(--l-photo-show,1);pointer-events:none}
@@ -67,7 +73,7 @@ const BASE_CSS = `${TOKENS}
      2. View Assist: on a tablet with a View Assist sensor, the clock goes to its home screen;
      3. the card's `nav` config: { home: '/path', back: '/path', back_label: 'Rooms' }.
    Without a home path the clock button hides; without a back path, Back goes back in history. */
-class LamplightCard extends HTMLElement {
+export class LamplightCard extends HTMLElement {
   setConfig(config) { this.config = { ...this.defaults(), ...config }; this.nav = config.nav || {}; }
   defaults() { return {}; }
   set hass(hass) { this._hass = hass; if (!this.built) this.build(); this.update(); }
@@ -148,8 +154,13 @@ class LamplightCard extends HTMLElement {
   }
 }
 
-const define = (tag, cls, name, description) => {
+/* Registers a card once (a second load of the same tag is a no-op, so two bundles can't throw), and lists it in the
+   card picker once. Returns the class actually registered under `tag`. */
+export const define = (tag, cls, name, description) => {
   if (!customElements.get(tag)) customElements.define(tag, cls);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: tag, name, description, preview: false, documentationURL: 'https://github.com/HaydenGriffin/lamplight' });
+  if (name && !window.customCards.some((c) => c.type === tag)) {
+    window.customCards.push({ type: tag, name, description, preview: false, documentationURL: 'https://github.com/HaydenGriffin/lamplight' });
+  }
+  return customElements.get(tag);
 };

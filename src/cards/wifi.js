@@ -3,7 +3,9 @@
  *   qr: /local/guest/wifi.svg       # a QR code for WIFI:T:WPA;S:<ssid>;P:<password>;;
  *   ssid: Guest network
  */
-class LamplightWifiCard extends LamplightCard {
+import { LamplightCard, define, esc } from '../core.js';
+
+export class LamplightWifiCard extends LamplightCard {
   setConfig(config) {
     if (!config.qr) throw new Error('qr is required');
     super.setConfig(config);

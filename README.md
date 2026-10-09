@@ -137,11 +137,51 @@ Make the QR image from `WIFI:T:WPA;S:<network>;P:<password>;;` with any QR gener
 The cards read their surfaces from `--l-page`, `--l-panel` and `--l-photo` (a background image shown blurred behind the
 panels), so a theme or a parent card can set them. `--l-photo-show: 0` gives the solid variant.
 
+## Building on Lamplight
+
+`src/` is plain ES modules, and `dist/lamplight.js` is an ES module with the same exports, so your own cards can share
+the design system instead of copying it.
+
+```js
+import { LamplightCard, define, esc } from '/hacsfiles/lamplight/lamplight.js';  // or src/core.js in your own bundle
+
+class PantryCard extends LamplightCard {
+  defaults() { return { entity: 'sensor.pantry' }; }
+  build() {
+    this.built = true;
+    this.shell('Pantry', '<main class="list"></main>', { sub: 'What we have' });
+  }
+  update() {
+    const items = this.st(this.config.entity)?.attributes?.items || [];
+    this.shadowRoot.querySelector('.list').innerHTML = items.map((i) => `<p>${esc(i)}</p>`).join('');
+  }
+  styles() { return '.list{flex:1;overflow:auto;background:var(--panel);border-radius:var(--r-tile);padding:16px}'; }
+}
+define('pantry-card', PantryCard, 'Pantry', 'What we have in.');
+```
+
+| Export | What it is |
+| --- | --- |
+| `LamplightCard` | The base class: `setConfig` (merged over `defaults()`), `hass`, `shell(title, mainHtml, {sub, extra})` (header with clock and Back, the card's main, a toast), `build()` / `update()` / `styles()` / `act(name, el)` to override, `st(id)`, `call(domain, service, data, doneText)`, `toast(text, error)`, `setSub(text)`, `hhmm(date)`, navigation (`goHome`, `goBack`, `window.lamplightNav`, `nav` config). |
+| `define(tag, cls, name, description)` | Registers the element once (a second load is a no-op) and lists it in the card picker once. Returns the class registered under `tag`. |
+| `TOKENS`, `BASE_CSS` | The CSS custom properties (The One Token Rule, DESIGN.md) and the shared page, header, button and toast styles that `shell()` puts in each card's shadow root. |
+| `esc(value)`, `cap(text)`, `dayStart(date)` | HTML escaping for anything you interpolate, capitalising, and local midnight of a date. |
+| `registerFonts(base?)`, `fontBase()` | The Lamplight Text and Lexend faces, registered on the document once when the core loads. |
+| `VERSION` | This release. |
+| `LamplightWeatherCard` … `LamplightWifiCard` | The six cards' classes (each registers itself when its module loads). |
+
+Import `src/core.js` for the core alone (no cards registered), or `src/cards/<name>.js` for one card.
+
+**Fonts.** The core looks for `ahn-latin.woff2`, `ahn-latin-ext.woff2` and `lexend-latin.woff2` next to the file it runs
+from (`dist/` for the HACS bundle). If your bundle puts them somewhere else, set `window.lamplightFontBase` (ending in
+`/`) before it loads, for example `'/local/fonts/'`.
+
 ## Development
 
-The cards are plain custom elements with no dependencies. Edit `src/`, then run `node scripts/build.mjs` to rebuild
-`dist/lamplight.js`. For the demo, serve the repo root (`python3 -m http.server`) and open `/demo/`; `npm install` and
-`npm run demo-icons` regenerate its icon set after you add an icon. `tools/showcase.cjs` renders the images above.
+Edit `src/`, then `npm ci` (once: esbuild, pinned) and `node scripts/build.mjs` to rebuild `dist/lamplight.js`; CI checks
+the committed bundle is up to date. `npm test` runs the module tests (node, no browser). For the demo, serve the repo root
+(`python3 -m http.server`) and open `/demo/`; `npm run demo-icons` regenerates its icon set after you add an icon.
+`tools/showcase.cjs` renders the images above.
 
 ## Licence
 

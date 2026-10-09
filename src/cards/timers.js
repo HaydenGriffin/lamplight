@@ -8,6 +8,8 @@
  *   view_assist_sensor: sensor.viewassist_kitchen   # optional; tablets find their own
  * An appliance timer is a timer entity whose `finishes_at` attribute is set while it runs.
  */
+import { LamplightCard, cap, dayStart, define, esc } from '../core.js';
+
 const RING_C = 2 * Math.PI * 30;
 /* Time left, in words so it can't be read as a time of day: "1 h 05 min", "17 min 39 s", "45 s". */
 const leftHtml = (sec) => {
@@ -17,7 +19,7 @@ const leftHtml = (sec) => {
   return m ? `${part(m, 'min')} ${part(x, 's')}` : part(x, 's');
 };
 
-class LamplightTimersCard extends LamplightCard {
+export class LamplightTimersCard extends LamplightCard {
   defaults() { return { quick_minutes: [5, 10, 15, 20], appliance_timers: [] }; }
 
   get roomName() { return this.st(this.vaSensor)?.attributes?.friendly_name || 'this room'; }

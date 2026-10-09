@@ -12,10 +12,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci --no-audit --no-fund
       - name: The bundle is up to date with src/
         run: node scripts/build.mjs && git diff --exit-code dist/lamplight.js
       - name: The bundle parses
         run: node --check dist/lamplight.js
+      - name: Module tests
+        run: npm test
   hacs:
     runs-on: ubuntu-latest
     steps:

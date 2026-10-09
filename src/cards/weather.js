@@ -4,6 +4,8 @@
  *   entity: weather.home
  *   wind_unit: km/h          # label only; the value comes from the weather entity
  */
+import { LamplightCard, cap, define, esc } from '../core.js';
+
 const W_ICON = {
   'clear-night': 'weather-night', cloudy: 'weather-cloudy', exceptional: 'alert-circle-outline', fog: 'weather-fog', hail: 'weather-hail',
   lightning: 'weather-lightning', 'lightning-rainy': 'weather-lightning-rainy', partlycloudy: 'weather-partly-cloudy', pouring: 'weather-pouring',
@@ -13,7 +15,7 @@ const W_LABEL = { 'clear-night': 'Clear', partlycloudy: 'Partly cloudy', 'lightn
 const wLabel = (c) => W_LABEL[c] || cap(c || '');
 const compass = (deg) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((deg ?? 0) % 360) / 45) % 8];
 
-class LamplightWeatherCard extends LamplightCard {
+export class LamplightWeatherCard extends LamplightCard {
   defaults() { return { entity: 'weather.home' }; }
 
   build() {

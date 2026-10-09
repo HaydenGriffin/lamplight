@@ -7,10 +7,11 @@
  *     calendar.family: {name: Family, icon: mdi:home-heart}
  *     calendar.work: {name: Work, icon: mdi:briefcase-outline}
  */
+import { LamplightCard, dayStart, define, esc } from '../core.js';
+
 const DAY_MS = 86400e3;
 const AGENDA_REFRESH_MS = 10 * 60e3;
 const CANCELLED = /^\s*(cancel+ed)\s*:\s*/i;
-const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 /* All-day events carry a plain date ("2026-10-02"); parse it as local midnight, not UTC. */
 const parseWhen = (v) => {
@@ -26,7 +27,7 @@ const shortPlace = (loc) => {
   return l.split(/[,\n]/)[0].slice(0, 40);
 };
 
-class LamplightAgendaCard extends LamplightCard {
+export class LamplightAgendaCard extends LamplightCard {
   setConfig(config) {
     if (!config.calendars || typeof config.calendars !== 'object') throw new Error('calendars is required');
     super.setConfig(config);

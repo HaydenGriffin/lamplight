@@ -5,6 +5,8 @@
  *   type: custom:lamplight-info-card
  *   show_image: true
  */
+import { LamplightCard, cap, define, esc } from '../core.js';
+
 const FONT_MAX = 46; const FONT_MIN = 24; const FONT_STEP = 2;
 const OWN_PATHS = /\/(info|infopic)\/?$/;
 
@@ -18,7 +20,7 @@ window.addEventListener('popstate', notePage);
 /* Plain text with light markdown: **bold** and "* " or "- " bullets. Line breaks are kept by CSS (pre-line). */
 const formatMessage = (text) => esc(String(text ?? '').trim()).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^[ \t]*[*-][ \t]+/gm, '• ');
 
-class LamplightInfoCard extends LamplightCard {
+export class LamplightInfoCard extends LamplightCard {
   defaults() { return { show_image: false }; }
 
   build() {
