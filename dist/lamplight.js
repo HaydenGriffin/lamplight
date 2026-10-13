@@ -70,6 +70,9 @@ var preblur = (url, look = PHOTO_LOOK, width = 160) => {
   }
   return softened.get(key);
 };
+var TOAST_MS = 2500;
+var UNDO_MS = 8e3;
+var ERROR_MS = 5e3;
 var TOKENS = `
   :host{display:block;
     --page:var(--l-page,#0b0c0f);--panel:var(--l-panel,rgba(22,24,29,.74));--panel-solid:#17191e;--raised:var(--l-raised,rgba(255,255,255,.08));--raised-2:var(--l-raised-2,rgba(255,255,255,.14));--line:rgba(255,255,255,.07);
@@ -107,6 +110,10 @@ var BASE_CSS = `${TOKENS}
   .lf-retry ha-icon{--mdc-icon-size:22px}
   .toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:30;max-width:90%;background:var(--toast-ground);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:12px 22px;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .toast.error{background:var(--error-ground);color:var(--error-text);border-color:rgba(255,138,128,.45)} .toast[hidden]{display:none}
+  .toast.has-undo:not([hidden]){display:flex;align-items:center;gap:14px;padding:5px 5px 5px 22px}
+  .toast.has-undo .t-msg{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .undo{height:56px;flex:0 0 auto;border-radius:999px;display:inline-flex;align-items:center;gap:6px;padding:0 20px 0 14px;background:var(--raised-2);font-size:18px;font-weight:600}
+  .undo ha-icon{--mdc-icon-size:22px;color:var(--warm)}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex-shrink:0;animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
   @media (prefers-reduced-motion:reduce){.dot{animation:none}}`;
@@ -202,7 +209,11 @@ var LamplightCard = class extends HTMLElement {
       if (el.dataset.act === "home") this.goHome();
       else if (el.dataset.act === "back") this.goBack();
       else if (el.dataset.act === "retry") this.retry();
-      else this.act(el.dataset.act, el);
+      else if (el.dataset.act === "undo") {
+        const run = this.undoRun;
+        this.hideToast();
+        run?.();
+      } else this.act(el.dataset.act, el);
     });
     if (this.isConnected) {
       this.startFit();
@@ -226,6 +237,7 @@ var LamplightCard = class extends HTMLElement {
   }
   disconnectedCallback() {
     this.stopFit();
+    this.hideToast();
   }
   startFit() {
     if (this.shadowRoot && !this.unfit) this.unfit = fit(this);
@@ -292,19 +304,26 @@ var LamplightCard = class extends HTMLElement {
       window.dispatchEvent(new Event("location-changed"));
     }
   }
-  toast(text, error = false, ms = 2500) {
+  /* A short pill at the top. With `undo` (a function) it grows an Undo button and stays UNDO_MS; a tap on Undo runs it. */
+  toast(text, error = false, ms = TOAST_MS, undo = null) {
     const el = this.shadowRoot?.querySelector(".toast");
     if (!el) return;
-    el.textContent = text;
+    this.undoRun = undo;
+    el.innerHTML = `<span class="t-msg">${esc(text)}</span>${undo ? '<button class="undo" data-act="undo"><ha-icon icon="mdi:undo"></ha-icon>Undo</button>' : ""}`;
     el.classList.toggle("error", error);
+    el.classList.toggle("has-undo", !!undo);
     el.hidden = false;
     clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => {
-      el.hidden = true;
-    }, error ? Math.max(ms, 5e3) : ms);
+    this.toastTimer = setTimeout(() => this.hideToast(), error ? Math.max(ms, ERROR_MS) : undo ? Math.max(ms, UNDO_MS) : ms);
   }
-  async call(domain, service, data, done) {
-    if (done) this.toast(done);
+  hideToast() {
+    clearTimeout(this.toastTimer);
+    this.undoRun = null;
+    const el = this.shadowRoot?.querySelector(".toast");
+    if (el) el.hidden = true;
+  }
+  async call(domain, service, data, done, undo = null) {
+    if (done) this.toast(done, false, TOAST_MS, undo);
     try {
       await this._hass.callService(domain, service, data);
       return true;
@@ -901,6 +920,8 @@ define("lamplight-info-card", LamplightInfoCard, "Lamplight Info", "The assistan
 
 // src/cards/timers.js
 var RING_C = 2 * Math.PI * 30;
+var ARM_MS2 = 5e3;
+var UNDO_MIN_S = 30;
 var leftHtml = (sec) => {
   const s = Math.max(0, Math.ceil(sec));
   const h = Math.floor(s / 3600);
@@ -910,6 +931,14 @@ var leftHtml = (sec) => {
   if (h) return `${part(h, "h")} ${part(String(m).padStart(2, "0"), "min")}`;
   return m ? `${part(m, "min")} ${part(x, "s")}` : part(x, "s");
 };
+var timeWords = (sec) => {
+  const s = Math.max(1, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor(s % 3600 / 60);
+  const x = s % 60;
+  const part = (n, unit) => n ? `${n} ${unit}${n === 1 ? "" : "s"}` : "";
+  return [part(h, "hour"), part(m, "minute"), part(x, "second")].filter(Boolean).join(" ");
+};
 var LamplightTimersCard = class extends LamplightCard {
   defaults() {
     return { quick_minutes: [5, 10, 15, 20], appliance_timers: [] };
@@ -917,21 +946,29 @@ var LamplightTimersCard = class extends LamplightCard {
   get roomName() {
     return this.st(this.vaSensor)?.attributes?.friendly_name || "this room";
   }
+  /* Soonest first, paused timers last. A paused timer (status "paused") has the time it had left: `remaining` (seconds)
+     when the sensor gives it, else its expiry less the moment it was paused (`updated_at`). */
   get vaTimers() {
     const list = this.st(this.vaSensor)?.attributes?.timers;
     if (!Array.isArray(list)) return [];
+    const now = Date.now();
     return list.filter((t) => t && t.status !== "expired").map((t) => {
       const at = Date.parse(t.expires || "");
       const from = Date.parse(t.created_at || "");
       const orig = Date.parse(t.original_expiry || t.expires || "");
+      const paused = t.status === "paused";
+      const remaining = parseFloat(t.remaining);
+      const left = !paused ? (at - now) / 1e3 : Number.isFinite(remaining) ? remaining : (at - Date.parse(t.updated_at || "")) / 1e3;
       return {
-        id: t.id,
+        id: String(t.id),
         name: String(t.name || ""),
         cls: t.timer_class || "timer",
         at,
+        paused,
+        left: Number.isFinite(left) ? Math.max(0, left) : null,
         total: Number.isFinite(from) && Number.isFinite(orig) && orig > from ? (orig - from) / 1e3 : null
       };
-    }).filter((t) => Number.isFinite(t.at)).sort((a, b) => a.at - b.at);
+    }).filter((t) => t.paused || Number.isFinite(t.at)).sort((a, b) => a.paused - b.paused || (a.paused ? 0 : a.at - b.at));
   }
   get appliances() {
     return (this.config.appliance_timers || []).map((a) => {
@@ -966,15 +1003,18 @@ var LamplightTimersCard = class extends LamplightCard {
     super.disconnectedCallback();
     clearInterval(this.ticker);
     this.ticker = null;
+    this.disarm();
   }
   render() {
     const root = this.shadowRoot;
     if (!root || !this._hass) return;
     const timers = this.vaTimers;
     const apps = this.appliances;
-    const running = timers.filter((t) => t.cls === "timer");
+    const running = timers.filter((t) => t.cls === "timer" && !t.paused);
     const next = running[0];
-    this.setSub(running.length ? `${running.length} running · next done at ${this.hhmm(next.at)}` : timers.length ? `${timers.length} alarm${timers.length > 1 ? "s" : ""} set` : `Nothing running in ${this.roomName}`, running.length ? "warm" : "");
+    const paused = timers.filter((t) => t.paused).length;
+    const alarms = timers.filter((t) => t.cls !== "timer").length;
+    this.setSub(running.length ? `${running.length} running · next done at ${this.hhmm(next.at)}` : paused ? `${paused} paused` : alarms ? `${alarms} alarm${alarms > 1 ? "s" : ""} set` : `Nothing running in ${this.roomName}`, running.length ? "warm" : "");
     const rows = [...timers.map((t) => this.timerRow(t)), ...apps.map((a) => this.applianceRow(a))];
     root.querySelector(".list").innerHTML = rows.length ? rows.join("") : `<div class="empty"><span class="disc big"><ha-icon icon="mdi:timer-outline"></ha-icon></span>
       <b>No timers running</b><span>Tap a time on the right to start one here.</span></div>`;
@@ -990,13 +1030,23 @@ var LamplightTimersCard = class extends LamplightCard {
     const n = Math.round((b - a) / 864e5);
     return n === 0 ? "" : n === 1 ? " tomorrow" : ` ${new Date(d).toLocaleDateString(this.locale, { weekday: "long" })}`;
   }
+  /* Cancel, or "Tap again to cancel" while it's armed (alarms, reminders and paused timers). */
+  cancelHtml(t, label) {
+    const armed = this.armed === t.id;
+    return `<button class="pill ${armed ? "danger" : ""}" data-act="cancel" data-arg="${esc(t.id)}" data-name="${esc(label)}">
+      <ha-icon icon="mdi:close"></ha-icon>${armed ? "Tap again to cancel" : "Cancel"}</button>`;
+  }
   timerRow(t) {
     if (t.cls !== "timer") {
+      const label2 = t.name ? cap(t.name) : t.cls === "alarm" ? "Alarm" : "Reminder";
       return `<div class="row alarm"><span class="disc"><ha-icon icon="mdi:${t.cls === "alarm" ? "alarm" : "bell-outline"}"></ha-icon></span>
-        <span class="txt"><b class="num">${esc(this.hhmm(t.at))}${esc(this.dayWord(t.at))}</b><span>${esc(t.name ? cap(t.name) : t.cls === "alarm" ? "Alarm" : "Reminder")}</span></span>
-        <button class="pill" data-act="cancel" data-arg="${esc(t.id)}" data-name="${esc(t.name || t.cls)}"><ha-icon icon="mdi:close"></ha-icon>Cancel</button></div>`;
+        <span class="txt"><b class="num">${esc(this.hhmm(t.at))}${esc(this.dayWord(t.at))}</b><span>${esc(label2)}</span></span>${this.cancelHtml(t, label2)}</div>`;
     }
     const label = t.name ? cap(t.name) : "Timer";
+    if (t.paused) {
+      return `<div class="row timer paused"><span class="disc"><ha-icon icon="mdi:timer-pause-outline"></ha-icon></span>
+        <span class="txt"><b class="cd num">${t.left !== null ? leftHtml(t.left) : "Paused"}</b><span>${esc(label)} · paused</span></span>${this.cancelHtml(t, label)}</div>`;
+    }
     return `<div class="row timer"><span class="ring" aria-hidden="true"><svg viewBox="0 0 68 68"><circle class="track" cx="34" cy="34" r="30"/>
         <circle class="fill" cx="34" cy="34" r="30" data-ring="${t.at}" data-total="${t.total || ""}" stroke-dasharray="${RING_C.toFixed(1)}"/></svg></span>
       <span class="txt"><b class="cd num" data-deadline="${t.at}" role="timer" aria-label="${esc(label)}"></b><span>${esc(label)} · done at ${esc(this.hhmm(t.at))}</span></span>
@@ -1046,7 +1096,43 @@ var LamplightTimersCard = class extends LamplightCard {
           this.render();
         }
       }, 1e4);
-    } else if (act === "cancel") this.call("view_assist", "cancel_timer", { timer_id: arg }, `${cap(el.dataset.name || "Timer")} cancelled`);
+    } else if (act === "cancel") {
+      const t = this.vaTimers.find((x) => x.id === arg) || { id: arg, cls: "alarm" };
+      if ((t.cls !== "timer" || t.paused) && this.armed !== arg) {
+        this.arm(arg);
+        return;
+      }
+      this.disarm();
+      this.cancel(t, el.dataset.name);
+    }
+  }
+  /* A running timer cancels at once; Undo sets it again with its name and the time it had left (UNDO_MIN_S at least). */
+  cancel(t, name) {
+    const label = cap(name || "Timer");
+    const again = t.cls === "timer" && !t.paused && t.left > 0 ? () => this.call("view_assist", "set_timer", {
+      entity_id: this.vaSensor,
+      type: "timer",
+      time: timeWords(Math.max(UNDO_MIN_S, t.left)),
+      ...t.name ? { name: t.name } : {}
+    }, `${label} back on`) : null;
+    this.call("view_assist", "cancel_timer", { timer_id: t.id }, `${label} cancelled`, again);
+  }
+  /* The two-tap arm (DESIGN.md, Actions): the first tap turns Cancel red for ARM_MS. */
+  arm(id) {
+    clearTimeout(this.armTimer);
+    this.armed = id;
+    this.render();
+    this.armTimer = setTimeout(() => {
+      this.armed = null;
+      this.render();
+    }, ARM_MS2);
+  }
+  disarm() {
+    clearTimeout(this.armTimer);
+    if (this.armed) {
+      this.armed = null;
+      this.render();
+    }
   }
   styles() {
     return `
@@ -1064,6 +1150,7 @@ var LamplightTimersCard = class extends LamplightCard {
       .txt b.cd u{text-decoration:none;font-family:var(--text-font);font-size:19px;font-weight:600;color:var(--muted);margin-left:3px;letter-spacing:0}
       .txt > span{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
       .row.timer .txt > span{color:var(--warm)}
+      .row.timer.paused{background:var(--raised);gap:14px} .row.timer.paused .txt > span{color:var(--muted)}
       .ring{width:64px;height:64px;flex:0 0 64px}
       .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
       .ring circle{fill:none;stroke-width:6}
@@ -1073,6 +1160,7 @@ var LamplightTimersCard = class extends LamplightCard {
       .row.alarm .disc{color:var(--accent)}
       .row.appliance .txt b.cd{font-size:30px}
       .pill{height:56px;flex:0 0 auto;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 18px 0 14px;font-size:18px;font-weight:600;background:var(--raised-2);white-space:nowrap}
+      .pill.danger{background:var(--alert);color:var(--danger-ink)}
       .start{background:var(--panel);border-radius:var(--r-tile);padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
       h2{margin:0 2px;font-size:17px;font-weight:600;color:var(--muted)}
       .quick{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:minmax(72px,1fr);gap:10px}
@@ -1332,7 +1420,9 @@ export {
   LamplightWeatherCard,
   LamplightWifiCard,
   PHOTO_LOOK,
+  TOAST_MS,
   TOKENS,
+  UNDO_MS,
   VERSION,
   cap,
   dayStart,

@@ -26,6 +26,7 @@ class FakeElement {
     return this.kids.get(sel);
   }
   querySelectorAll() { return []; }
+  get parentElement() { return (this.parent ||= new FakeElement()); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   removeEventListener() {}
   setAttribute(k, v) { this.attrs[k] = String(v); }

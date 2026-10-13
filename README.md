@@ -90,8 +90,10 @@ appliance_timers:
   - { entity: timer.washing_machine, name: Washing machine, icon: mdi:washing-machine }
 ```
 
-Timers come from the tablet's View Assist sensor and are set and cancelled through View Assist. An appliance timer is
-any `timer` entity with a `finishes_at` attribute while it runs.
+Timers come from the tablet's View Assist sensor and are set and cancelled through View Assist. Paused timers show the
+time they have left. Cancelling a running timer offers Undo for 8 seconds, which sets it again for the time it had left;
+alarms, reminders and paused timers ask for a second tap instead. An appliance timer is any `timer` entity with a
+`finishes_at` attribute while it runs.
 
 ### Help
 

@@ -467,7 +467,7 @@ Raised pill track with a 4px inset; 56px pill options in muted; the selected opt
 - **Style:** a dark pill at the top centre, 14px from the top, z-index above sheets (toast ground, 1px `rgba(255,255,255,.12)` border, 18px/600 text, 12px 22px padding, toast lift, one line with an ellipsis, at most 90% wide), about 2.5s. Every card uses this one style.
 - **Help exception:** the Help page's toast carries the assistant's spoken answer, so it wraps to three lines with a 26px radius; everything else matches.
 - **Error:** the same pill on a deep red ground (`--error-ground`, #5a1616) with a 1px coral border (`rgba(255,138,128,.45)`) and light coral text (`--error-text`, #ffd7d2). One value on every card, the clock and the phone.
-- **Undo:** the toast grows a 56px raised-2 "Undo" pill with a warm icon at its right.
+- **Undo:** the toast grows a 56px raised-2 "Undo" pill with a warm icon at its right, and stays 8s instead of 2.5s. Use it where the action can really be put back (a cancelled timer is set again for the time it had left); where it can't (an alarm, a paused timer), use the two-tap arm instead.
 
 ### Live dot
 A 10px warm circle that pulses on a 1.6s loop, only beside "motion now", "playing now" or "running now". It is one of only two looping animations (the other is the timer ring) and stops under `prefers-reduced-motion`.

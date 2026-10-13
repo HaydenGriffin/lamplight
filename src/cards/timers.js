@@ -1,7 +1,8 @@
-/* Timers: what's running on this tablet, with live countdowns and a ring, alarms and reminders with their time, and
- * appliance timers (washing machine, dryer) as quiet read-only rows. Quick-start buttons on the right. Timers are View
- * Assist's: they're read from the tablet's View Assist sensor (`timers` attribute) and set and cancelled through its
- * services.
+/* Timers: what's running on this tablet, with live countdowns and a ring, paused timers with the time they have left,
+ * alarms and reminders with their time, and appliance timers (washing machine, dryer) as quiet read-only rows.
+ * Quick-start buttons on the right. Timers are View Assist's: they're read from the tablet's View Assist sensor (`timers`
+ * attribute) and set and cancelled through its services. A running timer cancels at once with Undo, which sets it again
+ * for the time it had left; alarms, reminders and paused timers can't come back that way, so Cancel asks for a second tap.
  *   type: custom:lamplight-timers-card
  *   quick_minutes: [5, 10, 15, 20]
  *   appliance_timers: [{entity: timer.washing_machine, name: Washing machine, icon: mdi:washing-machine}]
@@ -11,6 +12,8 @@
 import { LamplightCard, cap, dayStart, define, esc } from '../core.js';
 
 const RING_C = 2 * Math.PI * 30;
+const ARM_MS = 5000;
+const UNDO_MIN_S = 30;
 /* Time left, in words so it can't be read as a time of day: "1 h 05 min", "17 min 39 s", "45 s". */
 const leftHtml = (sec) => {
   const s = Math.max(0, Math.ceil(sec)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const x = s % 60;
@@ -18,20 +21,32 @@ const leftHtml = (sec) => {
   if (h) return `${part(h, 'h')} ${part(String(m).padStart(2, '0'), 'min')}`;
   return m ? `${part(m, 'min')} ${part(x, 's')}` : part(x, 's');
 };
+/* A duration as View Assist's set_timer reads it: "1 hour 5 minutes", "4 minutes 30 seconds". */
+const timeWords = (sec) => {
+  const s = Math.max(1, Math.round(sec)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const x = s % 60;
+  const part = (n, unit) => (n ? `${n} ${unit}${n === 1 ? '' : 's'}` : '');
+  return [part(h, 'hour'), part(m, 'minute'), part(x, 'second')].filter(Boolean).join(' ');
+};
 
 export class LamplightTimersCard extends LamplightCard {
   defaults() { return { quick_minutes: [5, 10, 15, 20], appliance_timers: [] }; }
 
   get roomName() { return this.st(this.vaSensor)?.attributes?.friendly_name || 'this room'; }
 
+  /* Soonest first, paused timers last. A paused timer (status "paused") has the time it had left: `remaining` (seconds)
+     when the sensor gives it, else its expiry less the moment it was paused (`updated_at`). */
   get vaTimers() {
     const list = this.st(this.vaSensor)?.attributes?.timers;
     if (!Array.isArray(list)) return [];
+    const now = Date.now();
     return list.filter((t) => t && t.status !== 'expired').map((t) => {
       const at = Date.parse(t.expires || ''); const from = Date.parse(t.created_at || ''); const orig = Date.parse(t.original_expiry || t.expires || '');
-      return { id: t.id, name: String(t.name || ''), cls: t.timer_class || 'timer', at,
+      const paused = t.status === 'paused';
+      const remaining = parseFloat(t.remaining);
+      const left = !paused ? (at - now) / 1000 : Number.isFinite(remaining) ? remaining : (at - Date.parse(t.updated_at || '')) / 1000;
+      return { id: String(t.id), name: String(t.name || ''), cls: t.timer_class || 'timer', at, paused, left: Number.isFinite(left) ? Math.max(0, left) : null,
         total: Number.isFinite(from) && Number.isFinite(orig) && orig > from ? (orig - from) / 1000 : null };
-    }).filter((t) => Number.isFinite(t.at)).sort((a, b) => a.at - b.at);
+    }).filter((t) => t.paused || Number.isFinite(t.at)).sort((a, b) => a.paused - b.paused || (a.paused ? 0 : a.at - b.at));
   }
 
   get appliances() {
@@ -55,14 +70,15 @@ export class LamplightTimersCard extends LamplightCard {
   }
 
   connectedCallback() { super.connectedCallback(); if (this.built) this.syncTicker(); }
-  disconnectedCallback() { super.disconnectedCallback(); clearInterval(this.ticker); this.ticker = null; }
+  disconnectedCallback() { super.disconnectedCallback(); clearInterval(this.ticker); this.ticker = null; this.disarm(); }
 
   render() {
     const root = this.shadowRoot; if (!root || !this._hass) return;
     const timers = this.vaTimers; const apps = this.appliances;
-    const running = timers.filter((t) => t.cls === 'timer'); const next = running[0];
+    const running = timers.filter((t) => t.cls === 'timer' && !t.paused); const next = running[0];
+    const paused = timers.filter((t) => t.paused).length; const alarms = timers.filter((t) => t.cls !== 'timer').length;
     this.setSub(running.length ? `${running.length} running · next done at ${this.hhmm(next.at)}`
-      : timers.length ? `${timers.length} alarm${timers.length > 1 ? 's' : ''} set` : `Nothing running in ${this.roomName}`, running.length ? 'warm' : '');
+      : paused ? `${paused} paused` : alarms ? `${alarms} alarm${alarms > 1 ? 's' : ''} set` : `Nothing running in ${this.roomName}`, running.length ? 'warm' : '');
     const rows = [...timers.map((t) => this.timerRow(t)), ...apps.map((a) => this.applianceRow(a))];
     root.querySelector('.list').innerHTML = rows.length ? rows.join('') : `<div class="empty"><span class="disc big"><ha-icon icon="mdi:timer-outline"></ha-icon></span>
       <b>No timers running</b><span>Tap a time on the right to start one here.</span></div>`;
@@ -77,13 +93,24 @@ export class LamplightTimersCard extends LamplightCard {
     return n === 0 ? '' : n === 1 ? ' tomorrow' : ` ${new Date(d).toLocaleDateString(this.locale, { weekday: 'long' })}`;
   }
 
+  /* Cancel, or "Tap again to cancel" while it's armed (alarms, reminders and paused timers). */
+  cancelHtml(t, label) {
+    const armed = this.armed === t.id;
+    return `<button class="pill ${armed ? 'danger' : ''}" data-act="cancel" data-arg="${esc(t.id)}" data-name="${esc(label)}">
+      <ha-icon icon="mdi:close"></ha-icon>${armed ? 'Tap again to cancel' : 'Cancel'}</button>`;
+  }
+
   timerRow(t) {
     if (t.cls !== 'timer') {
+      const label = t.name ? cap(t.name) : t.cls === 'alarm' ? 'Alarm' : 'Reminder';
       return `<div class="row alarm"><span class="disc"><ha-icon icon="mdi:${t.cls === 'alarm' ? 'alarm' : 'bell-outline'}"></ha-icon></span>
-        <span class="txt"><b class="num">${esc(this.hhmm(t.at))}${esc(this.dayWord(t.at))}</b><span>${esc(t.name ? cap(t.name) : t.cls === 'alarm' ? 'Alarm' : 'Reminder')}</span></span>
-        <button class="pill" data-act="cancel" data-arg="${esc(t.id)}" data-name="${esc(t.name || t.cls)}"><ha-icon icon="mdi:close"></ha-icon>Cancel</button></div>`;
+        <span class="txt"><b class="num">${esc(this.hhmm(t.at))}${esc(this.dayWord(t.at))}</b><span>${esc(label)}</span></span>${this.cancelHtml(t, label)}</div>`;
     }
     const label = t.name ? cap(t.name) : 'Timer';
+    if (t.paused) {
+      return `<div class="row timer paused"><span class="disc"><ha-icon icon="mdi:timer-pause-outline"></ha-icon></span>
+        <span class="txt"><b class="cd num">${t.left !== null ? leftHtml(t.left) : 'Paused'}</b><span>${esc(label)} · paused</span></span>${this.cancelHtml(t, label)}</div>`;
+    }
     return `<div class="row timer"><span class="ring" aria-hidden="true"><svg viewBox="0 0 68 68"><circle class="track" cx="34" cy="34" r="30"/>
         <circle class="fill" cx="34" cy="34" r="30" data-ring="${t.at}" data-total="${t.total || ''}" stroke-dasharray="${RING_C.toFixed(1)}"/></svg></span>
       <span class="txt"><b class="cd num" data-deadline="${t.at}" role="timer" aria-label="${esc(label)}"></b><span>${esc(label)} · done at ${esc(this.hhmm(t.at))}</span></span>
@@ -126,7 +153,29 @@ export class LamplightTimersCard extends LamplightCard {
       this.busy = `start:${arg}`; this.render();
       this.call('view_assist', 'set_timer', { entity_id: this.vaSensor, type: 'timer', time: `${Number(arg)} minutes` }, `Timer set for ${Number(arg)} minutes`);
       setTimeout(() => { if (this.busy === `start:${arg}`) { this.busy = ''; this.render(); } }, 10000);
-    } else if (act === 'cancel') this.call('view_assist', 'cancel_timer', { timer_id: arg }, `${cap(el.dataset.name || 'Timer')} cancelled`);
+    } else if (act === 'cancel') {
+      const t = this.vaTimers.find((x) => x.id === arg) || { id: arg, cls: 'alarm' };
+      if ((t.cls !== 'timer' || t.paused) && this.armed !== arg) { this.arm(arg); return; }
+      this.disarm(); this.cancel(t, el.dataset.name);
+    }
+  }
+
+  /* A running timer cancels at once; Undo sets it again with its name and the time it had left (UNDO_MIN_S at least). */
+  cancel(t, name) {
+    const label = cap(name || 'Timer');
+    const again = t.cls === 'timer' && !t.paused && t.left > 0 ? () => this.call('view_assist', 'set_timer', {
+      entity_id: this.vaSensor, type: 'timer', time: timeWords(Math.max(UNDO_MIN_S, t.left)), ...(t.name ? { name: t.name } : {}) }, `${label} back on`) : null;
+    this.call('view_assist', 'cancel_timer', { timer_id: t.id }, `${label} cancelled`, again);
+  }
+
+  /* The two-tap arm (DESIGN.md, Actions): the first tap turns Cancel red for ARM_MS. */
+  arm(id) {
+    clearTimeout(this.armTimer); this.armed = id; this.render();
+    this.armTimer = setTimeout(() => { this.armed = null; this.render(); }, ARM_MS);
+  }
+  disarm() {
+    clearTimeout(this.armTimer);
+    if (this.armed) { this.armed = null; this.render(); }
   }
 
   styles() {
@@ -145,6 +194,7 @@ export class LamplightTimersCard extends LamplightCard {
       .txt b.cd u{text-decoration:none;font-family:var(--text-font);font-size:19px;font-weight:600;color:var(--muted);margin-left:3px;letter-spacing:0}
       .txt > span{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
       .row.timer .txt > span{color:var(--warm)}
+      .row.timer.paused{background:var(--raised);gap:14px} .row.timer.paused .txt > span{color:var(--muted)}
       .ring{width:64px;height:64px;flex:0 0 64px}
       .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
       .ring circle{fill:none;stroke-width:6}
@@ -154,6 +204,7 @@ export class LamplightTimersCard extends LamplightCard {
       .row.alarm .disc{color:var(--accent)}
       .row.appliance .txt b.cd{font-size:30px}
       .pill{height:56px;flex:0 0 auto;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 18px 0 14px;font-size:18px;font-weight:600;background:var(--raised-2);white-space:nowrap}
+      .pill.danger{background:var(--alert);color:var(--danger-ink)}
       .start{background:var(--panel);border-radius:var(--r-tile);padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
       h2{margin:0 2px;font-size:17px;font-weight:600;color:var(--muted)}
       .quick{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:minmax(72px,1fr);gap:10px}

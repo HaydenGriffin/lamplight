@@ -166,3 +166,58 @@ test('help: while read_only_entity is on, the examples show but a tap runs nothi
   card.hideToast?.(); clearTimeout(card.toastTimer);
   card.disconnectedCallback();
 });
+
+test('toast: an Undo action runs once from its button, and the toast goes', () => {
+  const card = new lib.LamplightWifiCard(); card.setConfig({ qr: '/local/qr.svg' }); card.hass = fakeHass();
+  let undone = 0;
+  card.toast('Lights off', false, lib.TOAST_MS, () => { undone += 1; });
+  const toast = card.shadowRoot.querySelector('.toast');
+  assert.match(toast.innerHTML, /Lights off<\/span><button class="undo" data-act="undo">/);
+  assert.ok(toast.classList.contains('has-undo') && !toast.hidden);
+  card.shadowRoot.tap({ act: 'undo' });
+  card.shadowRoot.tap({ act: 'undo' });
+  assert.equal(undone, 1);
+  assert.ok(toast.hidden);
+  card.toast('Saved');
+  assert.doesNotMatch(toast.innerHTML, /undo/);
+  card.disconnectedCallback();
+});
+
+test('timers: paused rows, Undo on a cancelled timer, and the two-tap arm for alarms', async () => {
+  const now = Date.now(); const iso = (ms) => new Date(now + ms).toISOString();
+  const timers = [
+    { id: 't1', name: 'pasta', timer_class: 'timer', status: 'running', created_at: iso(-60e3), original_expiry: iso(270e3), expires: iso(270e3) },
+    { id: 't2', name: 'bread', timer_class: 'timer', status: 'paused', expires: iso(600e3), updated_at: iso(-300e3) },
+    { id: 'a1', name: 'wake up', timer_class: 'alarm', status: 'running', expires: iso(9 * 3600e3) },
+  ];
+  const hass = fakeHass({ 'sensor.viewassist_kitchen': { state: 'normal', attributes: { friendly_name: 'the kitchen', timers } } });
+  const card = new lib.LamplightTimersCard();
+  card.setConfig({ view_assist_sensor: 'sensor.viewassist_kitchen' });
+  card.hass = hass;
+  const root = card.shadowRoot;
+  assert.deepEqual(card.vaTimers.map((t) => [t.id, t.paused]), [['t1', false], ['a1', false], ['t2', true]]);
+  assert.equal(card.vaTimers[2].left, 900);  // the time it had left when it was paused
+  assert.match(root.querySelector('.list').innerHTML, /row timer paused.*15<u>min<\/u> 0<u>s<\/u>.*Bread · paused/s);
+  assert.equal(root.querySelector('.sub').textContent, '1 running · next done at ' + card.hhmm(now + 270e3));
+
+  root.tap({ act: 'cancel', arg: 't1', name: 'Pasta' });
+  await tick();
+  assert.deepEqual(hass.calls.at(-1), { domain: 'view_assist', service: 'cancel_timer', data: { timer_id: 't1' } });
+  assert.match(root.querySelector('.toast').innerHTML, /Pasta cancelled.*Undo/s);
+  root.tap({ act: 'undo' });
+  await tick();
+  const again = hass.calls.at(-1);
+  assert.equal(again.service, 'set_timer');
+  assert.equal(again.data.name, 'pasta');
+  assert.match(again.data.time, /^4 minutes (29|30) seconds$/);
+
+  const before = hass.calls.length;
+  root.tap({ act: 'cancel', arg: 'a1', name: 'Wake up' });
+  assert.equal(hass.calls.length, before);  // armed, not cancelled
+  assert.match(root.querySelector('.list').innerHTML, /pill danger.*Tap again to cancel/s);
+  root.tap({ act: 'cancel', arg: 'a1', name: 'Wake up' });
+  await tick();
+  assert.deepEqual(hass.calls.at(-1).data, { timer_id: 'a1' });
+  assert.doesNotMatch(root.querySelector('.toast').innerHTML, /Undo/);
+  card.disconnectedCallback();
+});

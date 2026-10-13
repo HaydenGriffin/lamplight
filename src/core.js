@@ -75,6 +75,11 @@ export const preblur = (url, look = PHOTO_LOOK, width = 160) => {
   return softened.get(key);
 };
 
+/* How long a toast stays: a confirmation, one with Undo, and the shortest an error stays. */
+export const TOAST_MS = 2500;
+export const UNDO_MS = 8000;
+const ERROR_MS = 5000;
+
 /* Every colour goes through these properties (The One Token Rule). --l-page, --l-panel and --l-photo can be set from a
    theme or a parent card: --l-photo is a background image shown blurred behind the panels, --l-photo-show: 0 hides it.
    --l-photo-soft and --l-photo-filter are the pre-blurred copy and its filter (none), which cards set on themselves. */
@@ -117,6 +122,10 @@ export const BASE_CSS = `${TOKENS}
   .lf-retry ha-icon{--mdc-icon-size:22px}
   .toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:30;max-width:90%;background:var(--toast-ground);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:12px 22px;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .toast.error{background:var(--error-ground);color:var(--error-text);border-color:rgba(255,138,128,.45)} .toast[hidden]{display:none}
+  .toast.has-undo:not([hidden]){display:flex;align-items:center;gap:14px;padding:5px 5px 5px 22px}
+  .toast.has-undo .t-msg{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .undo{height:56px;flex:0 0 auto;border-radius:999px;display:inline-flex;align-items:center;gap:6px;padding:0 20px 0 14px;background:var(--raised-2);font-size:18px;font-weight:600}
+  .undo ha-icon{--mdc-icon-size:22px;color:var(--warm)}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex-shrink:0;animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
   @media (prefers-reduced-motion:reduce){.dot{animation:none}}`;
@@ -188,6 +197,7 @@ export class LamplightCard extends HTMLElement {
       if (el.dataset.act === 'home') this.goHome();
       else if (el.dataset.act === 'back') this.goBack();
       else if (el.dataset.act === 'retry') this.retry();
+      else if (el.dataset.act === 'undo') { const run = this.undoRun; this.hideToast(); run?.(); }
       else this.act(el.dataset.act, el);
     });
     if (this.isConnected) { this.startFit(); this.softenPhoto(); }
@@ -198,7 +208,7 @@ export class LamplightCard extends HTMLElement {
   resized() { }
   styles() { return ''; }
   connectedCallback() { this.syncNav(); this.startFit(); this.softenPhoto(); }
-  disconnectedCallback() { this.stopFit(); }
+  disconnectedCallback() { this.stopFit(); this.hideToast(); }
   startFit() { if (this.shadowRoot && !this.unfit) this.unfit = fit(this); }
   stopFit() { this.unfit?.(); this.unfit = null; }
 
@@ -240,13 +250,21 @@ export class LamplightCard extends HTMLElement {
     if (location.pathname !== path) { history.pushState(null, '', path); window.dispatchEvent(new Event('location-changed')); }
   }
 
-  toast(text, error = false, ms = 2500) {
+  /* A short pill at the top. With `undo` (a function) it grows an Undo button and stays UNDO_MS; a tap on Undo runs it. */
+  toast(text, error = false, ms = TOAST_MS, undo = null) {
     const el = this.shadowRoot?.querySelector('.toast'); if (!el) return;
-    el.textContent = text; el.classList.toggle('error', error); el.hidden = false;
-    clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => { el.hidden = true; }, error ? Math.max(ms, 5000) : ms);
+    this.undoRun = undo;
+    el.innerHTML = `<span class="t-msg">${esc(text)}</span>${undo ? '<button class="undo" data-act="undo"><ha-icon icon="mdi:undo"></ha-icon>Undo</button>' : ''}`;
+    el.classList.toggle('error', error); el.classList.toggle('has-undo', !!undo); el.hidden = false;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.hideToast(), error ? Math.max(ms, ERROR_MS) : undo ? Math.max(ms, UNDO_MS) : ms);
   }
-  async call(domain, service, data, done) {
-    if (done) this.toast(done);
+  hideToast() {
+    clearTimeout(this.toastTimer); this.undoRun = null;
+    const el = this.shadowRoot?.querySelector('.toast'); if (el) el.hidden = true;
+  }
+  async call(domain, service, data, done, undo = null) {
+    if (done) this.toast(done, false, TOAST_MS, undo);
     try { await this._hass.callService(domain, service, data); return true; } catch (e) { this.toast(`That didn't work: ${e?.message || e}`, true); return false; }
   }
 }
