@@ -1,7 +1,7 @@
-/* Lamplight 1.1.0 for Home Assistant. https://github.com/HaydenGriffin/lamplight (MIT). Built from src/ by scripts/build.mjs. */
+/* Lamplight 1.2.0 for Home Assistant. https://github.com/HaydenGriffin/lamplight (MIT). Built from src/ by scripts/build.mjs. */
 
 // src/core.js
-var VERSION = "1.1.0";
+var VERSION = "1.2.0";
 var fontBase = () => globalThis.lamplightFontBase || new URL(".", import.meta.url).href;
 var registerFonts = (base = fontBase()) => {
   if (document.getElementById("lamplight-fonts")) return;

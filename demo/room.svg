@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <!-- The demo's stand-in room photo: two lamps and a window. -->
+  <defs>
+    <radialGradient id="lamp" cx="18%" cy="28%" r="34%" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#c47a2c"/><stop offset="1" stop-color="#c47a2c" stop-opacity="0"/></radialGradient>
+    <radialGradient id="window" cx="84%" cy="72%" r="40%" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#2f5577"/><stop offset="1" stop-color="#2f5577" stop-opacity="0"/></radialGradient>
+    <radialGradient id="shade" cx="60%" cy="18%" r="26%" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#8a5a2a"/><stop offset="1" stop-color="#8a5a2a" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#2a2622"/>
+  <rect width="1600" height="1000" fill="url(#shade)"/>
+  <rect width="1600" height="1000" fill="url(#window)"/>
+  <rect width="1600" height="1000" fill="url(#lamp)"/>
+</svg>

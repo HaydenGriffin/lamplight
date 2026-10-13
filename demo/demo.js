@@ -1,4 +1,5 @@
-// The demo: every card on a made-up home, with a stand-in Home Assistant. Open demo/index.html (any static server),
+// The demo: every card on a made-up home, with a stand-in Home Assistant, then a few of their other states (a forecast
+// that won't load, Help while visitors are in, a reply that isn't an answer). Open demo/index.html (any static server),
 // or demo/index.html?card=weather for one card at tablet size.
 import ICONS from './icons.js';
 import '../dist/lamplight.js';
@@ -27,6 +28,8 @@ const hour = new Date().getHours();
 const states = {
   'sun.sun': { state: hour >= 7 && hour < 19 ? 'above_horizon' : 'below_horizon', attributes: { next_rising: tomorrow(7, 12), next_setting: today(18, 31) } },
   'weather.home': { state: 'partlycloudy', attributes: { temperature: 17, humidity: 64, wind_speed: 14, wind_bearing: 230, uv_index: 3, friendly_name: 'Home' } },
+  'weather.offline': { state: 'cloudy', attributes: { temperature: 13, humidity: 81, wind_speed: 22, wind_bearing: 200, friendly_name: 'Offline' } },
+  'input_boolean.visitors': { state: 'on', attributes: { friendly_name: 'Visitors' } },
   'calendar.family': { state: 'on', attributes: { friendly_name: 'Family' } },
   'calendar.work': { state: 'off', attributes: { friendly_name: 'Work' } },
   'calendar.birthdays': { state: 'off', attributes: { friendly_name: 'Birthdays' } },
@@ -35,11 +38,14 @@ const states = {
     friendly_name: 'the kitchen', home_screen: '/view-assist/clock', mode: 'normal',
     timers: [
       { id: 't1', name: 'pasta', timer_class: 'timer', status: 'running', created_at: at(-3 * MIN), original_expiry: at(9 * MIN), expires: at(9 * MIN) },
-      { id: 't2', name: 'bread', timer_class: 'timer', status: 'running', created_at: at(-7 * MIN), original_expiry: at(38 * MIN), expires: at(38 * MIN) },
+      { id: 't2', name: 'bread', timer_class: 'timer', status: 'paused', created_at: at(-7 * MIN), original_expiry: at(38 * MIN), expires: at(38 * MIN), updated_at: at(-4 * MIN) },
       { id: 'a1', name: 'wake up', timer_class: 'alarm', status: 'running', expires: tomorrow(7, 0) },
     ],
     title: 'Pasta timing',
     message: 'Fresh pasta needs **2 to 3 minutes** in well-salted boiling water; dried needs 9 to 11.\n\n* Taste a minute before the packet time\n* Keep a mug of the water for the sauce',
+  } },
+  'sensor.viewassist_bedroom': { state: 'normal', attributes: {
+    friendly_name: 'the bedroom', home_screen: '/view-assist/clock', mode: 'normal', timers: [], title: '', message: "Sorry, I couldn't understand that",
   } },
 };
 
@@ -74,6 +80,7 @@ const hass = {
       return { conversation_id: 'demo', response: { speech: { plain: { speech: `Done: "${msg.text}". (This is the demo; nothing happened.)` } } } };
     }
     const id = msg.target?.entity_id;
+    if (id === 'weather.offline') { await new Promise((r) => setTimeout(r, 300)); throw new Error('the weather service is offline'); }
     if (msg.domain === 'weather') return { response: { [id]: { forecast: msg.service_data.type === 'hourly' ? hourly : daily } } };
     if (msg.domain === 'calendar') return { response: { [id]: { events: events[id] || [] } } };
     throw new Error('not in the demo');
@@ -82,24 +89,29 @@ const hass = {
 
 const nav = { home: '#', back: '#', back_label: 'Kitchen' };
 const VA = { view_assist_sensor: 'sensor.viewassist_kitchen', nav };
+const HELP = [
+  { name: 'Lights', icon: 'mdi:lightbulb-group', hint: 'Rooms, brightness and scenes', tip: "Say the room's name, or nothing for the room you're in.", examples: [
+    { say: 'turn on the lights in the {room}' }, { say: 'dim the living room to 30%' }, { say: 'turn everything off', confirm: true }, { say: 'set the scene to movie night' }] },
+  { name: 'Timers', icon: 'mdi:timer-outline', hint: 'Timers and alarms on this tablet', examples: [
+    { say: 'set a timer for 10 minutes' }, { say: 'set a pasta timer for 9 minutes' }, { say: 'wake me at 7 tomorrow' }] },
+  { name: 'Music', icon: 'mdi:music', hint: 'Speakers in every room', examples: [{ say: 'play some jazz in the {room}' }, { say: 'pause the music' }, { say: 'turn it up' }] },
+  { name: 'Weather', icon: 'mdi:weather-partly-cloudy', hint: 'Today and the week ahead', examples: [{ say: 'will it rain today?' }, { say: "what's the weather tomorrow?" }] },
+  { name: 'Shopping', icon: 'mdi:cart-outline', hint: 'The shared list', examples: [{ say: 'add oat milk to the shopping list' }, { say: "what's on the shopping list?" }] },
+  { name: 'Remember', icon: 'mdi:brain', hint: 'Notes the house keeps', examples: [{ say: 'remember that…', tap: false, note: 'Needs your own words, so it only shows here' }] },
+];
 const CARDS = {
   weather: { type: 'lamplight-weather-card', entity: 'weather.home', nav },
   agenda: { type: 'lamplight-agenda-card', nav, calendars: {
     'calendar.family': { name: 'Family', icon: 'mdi:home-heart' }, 'calendar.work': { name: 'Work', icon: 'mdi:briefcase-outline' },
     'calendar.birthdays': { name: 'Birthdays', icon: 'mdi:cake-variant-outline' } } },
   timers: { type: 'lamplight-timers-card', ...VA, appliance_timers: [{ entity: 'timer.washing_machine', name: 'Washing machine', icon: 'mdi:washing-machine' }] },
-  help: { type: 'lamplight-help-card', ...VA, rooms: { 'sensor.viewassist_kitchen': 'kitchen' }, categories: [
-    { name: 'Lights', icon: 'mdi:lightbulb-group', hint: 'Rooms, brightness and scenes', tip: "Say the room's name, or nothing for the room you're in.", examples: [
-      { say: 'turn on the lights in the {room}' }, { say: 'dim the living room to 30%' }, { say: 'turn everything off', confirm: true }, { say: 'set the scene to movie night' }] },
-    { name: 'Timers', icon: 'mdi:timer-outline', hint: 'Timers and alarms on this tablet', examples: [
-      { say: 'set a timer for 10 minutes' }, { say: 'set a pasta timer for 9 minutes' }, { say: 'wake me at 7 tomorrow' }] },
-    { name: 'Music', icon: 'mdi:music', hint: 'Speakers in every room', examples: [{ say: 'play some jazz in the {room}' }, { say: 'pause the music' }, { say: 'turn it up' }] },
-    { name: 'Weather', icon: 'mdi:weather-partly-cloudy', hint: 'Today and the week ahead', examples: [{ say: 'will it rain today?' }, { say: "what's the weather tomorrow?" }] },
-    { name: 'Shopping', icon: 'mdi:cart-outline', hint: 'The shared list', examples: [{ say: 'add oat milk to the shopping list' }, { say: "what's on the shopping list?" }] },
-    { name: 'Remember', icon: 'mdi:brain', hint: 'Notes the house keeps', examples: [{ say: 'remember that…', tap: false, note: 'Needs your own words, so it only shows here' }] },
-  ] },
+  help: { type: 'lamplight-help-card', ...VA, rooms: { 'sensor.viewassist_kitchen': 'kitchen' }, categories: HELP },
   info: { type: 'lamplight-info-card', ...VA },
   wifi: { type: 'lamplight-wifi-card', qr: './wifi.svg', ssid: 'Guest network', nav },
+  'forecast-offline': { type: 'lamplight-weather-card', entity: 'weather.offline', nav, caption: "Weather: the forecast won't load" },
+  'help-read-only': { type: 'lamplight-help-card', ...VA, rooms: { 'sensor.viewassist_kitchen': 'kitchen' }, categories: HELP,
+    read_only_entity: 'input_boolean.visitors', caption: 'Help: read-only while visitors are in' },
+  'info-misfire': { type: 'lamplight-info-card', view_assist_sensor: 'sensor.viewassist_bedroom', nav, wake_phrase: 'Okay Nabu', caption: "Info: didn't catch that" },
 };
 
 function mount(name, host) {
@@ -119,7 +131,7 @@ if (one && CARDS[one]) {
   const grid = document.querySelector('#gallery');
   Object.keys(CARDS).forEach((name) => {
     const fig = document.createElement('figure');
-    fig.innerHTML = `<div class="tablet"><div class="screen"></div></div><figcaption><a href="?card=${name}">${name}</a></figcaption>`;
+    fig.innerHTML = `<div class="tablet"><div class="screen"></div></div><figcaption><a href="?card=${name}">${CARDS[name].caption || name}</a></figcaption>`;
     grid.appendChild(fig);
     mount(name, fig.querySelector('.screen'));
   });

@@ -2,7 +2,7 @@
  * ("Building on Lamplight") for this module's API.
  * The cards are built for wall tablets (around 788×492 CSS px, landscape) and fill the screen: one card per view,
  * in a panel or a View Assist dashboard. */
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 /* Where the font files are: next to the file this code runs from (dist/ for the HACS bundle), unless the page sets
    window.lamplightFontBase (a URL ending in "/") before loading it, e.g. a bundle that keeps its fonts elsewhere. */

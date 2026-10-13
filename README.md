@@ -35,9 +35,9 @@ of them:
 | --- | --- |
 | `lamplight-weather-card` | Now, the next 12 hours as a temperature line with rain bars, and five days of low–high bars. The page's sky follows the weather. |
 | `lamplight-agenda-card` | Today and tomorrow from your calendars. What's on now glows, earlier events fade, cancelled ones are struck through. |
-| `lamplight-timers-card` | View Assist timers with live countdown rings, alarms, appliance timers, and quick-start buttons. |
+| `lamplight-timers-card` | View Assist timers with live countdown rings, paused timers, alarms, appliance timers, and quick-start buttons. Cancel has Undo. |
 | `lamplight-help-card` | "What can I say?" A voice cheat-sheet where tapping an example runs it through your assistant and shows the reply. |
-| `lamplight-info-card` | The assistant's last answer, auto-fitted as large as it will go, for View Assist's info pages. |
+| `lamplight-info-card` | The assistant's last answer, auto-fitted as large as it will go, for View Assist's info, infopic and alert pages. Says "Didn't catch that" when it wasn't an answer. |
 | `lamplight-wifi-card` | A guest Wi-Fi QR code big enough to scan from the sofa. The password lives only in the image. |
 
 ## Install
@@ -195,15 +195,22 @@ define('pantry-card', PantryCard, 'Pantry', 'What we have in.');
 
 | Export | What it is |
 | --- | --- |
-| `LamplightCard` | The base class: `setConfig` (merged over `defaults()`), `hass`, `shell(title, mainHtml, {sub, extra})` (header with clock and Back, the card's main, a toast), `build()` / `update()` / `styles()` / `act(name, el)` to override, `st(id)`, `call(domain, service, data, doneText)`, `toast(text, error)`, `setSub(text)`, `hhmm(date)`, navigation (`goHome`, `goBack`, `window.lamplightNav`, `nav` config). |
+| `LamplightCard` | The base class: `setConfig` (merged over `defaults()`), `hass`, `shell(title, mainHtml, {sub, extra})` (header with clock and Back, the card's main, a toast; it also fits the card to the screen and pre-blurs the photo), `build()` / `update()` / `styles()` / `act(name, el)` to override, `retry()` (the Retry button) and `resized()` (after the card is fitted), `st(id)`, `call(domain, service, data, doneText, undo)`, `toast(text, error, ms, undo)` and `hideToast()`, `setSub(text, cls)`, `hhmm(date)`, navigation (`goHome`, `goBack`, `window.lamplightNav`, `nav` config). |
 | `define(tag, cls, name, description)` | Registers the element once (a second load is a no-op) and lists it in the card picker once. Returns the class registered under `tag`. |
 | `TOKENS`, `BASE_CSS` | The CSS custom properties (The One Token Rule, DESIGN.md) and the shared page, header, button and toast styles that `shell()` puts in each card's shadow root. |
 | `esc(value)`, `cap(text)`, `dayStart(date)` | HTML escaping for anything you interpolate, capitalising, and local midnight of a date. |
+| `loadState({loading, error, count})`, `failedHtml(what)` | A load state (`loading`, `failed`, `empty` or `ready`; something to show beats an error) and the one "Couldn't load *what*" block with Retry (DESIGN.md, Load states). |
+| `preblur(url, look?, width?)`, `PHOTO_LOOK` | The page photo blurred once into a small image (a promise of a data URL, or null), and the look it's blurred to. Cards use it on their own `--l-photo`. |
+| `TOAST_MS`, `UNDO_MS` | How long a toast stays, and a toast with Undo. |
 | `registerFonts(base?)`, `fontBase()` | The Lamplight Text and Lexend faces, registered on the document once when the core loads. |
 | `VERSION` | This release. |
 | `LamplightWeatherCard` … `LamplightWifiCard` | The six cards' classes (each registers itself when its module loads). |
 
 Import `src/core.js` for the core alone (no cards registered), or `src/cards/<name>.js` for one card.
+
+**Page fit.** Each card fills the screen below whatever is above it (Home Assistant's header, say), measured with one
+shared ResizeObserver. If your dashboard moves things without a resize, dispatch `window.dispatchEvent(new
+Event('lamplight-layout'))`.
 
 **Fonts.** The core looks for `ahn-latin.woff2`, `ahn-latin-ext.woff2` and `lexend-latin.woff2` next to the file it runs
 from (`dist/` for the HACS bundle). If your bundle puts them somewhere else, set `window.lamplightFontBase` (ending in
@@ -212,9 +219,12 @@ from (`dist/` for the HACS bundle). If your bundle puts them somewhere else, set
 ## Development
 
 Edit `src/`, then `npm ci` (once: esbuild, pinned) and `node scripts/build.mjs` to rebuild `dist/lamplight.js`; CI checks
-the committed bundle is up to date. `npm test` runs the module tests (node, no browser). For the demo, serve the repo root
-(`python3 -m http.server`) and open `/demo/`; `npm run demo-icons` regenerates its icon set after you add an icon.
+the committed bundle is up to date. `npm test` runs the module and card tests (node, no browser). For the demo, serve the repo root
+(`python3 -m http.server`) and open `/demo/`, which also shows a few other states (a forecast that won't load, read-only
+Help, a misfire); `npm run demo-icons` regenerates its icon set after you add an icon.
 `tools/showcase.cjs` renders the images above.
+
+Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licence
 
