@@ -150,6 +150,24 @@ Make the QR image from `WIFI:T:WPA;S:<network>;P:<password>;;` with any QR gener
 The cards read their surfaces from `--l-page`, `--l-panel` and `--l-photo` (a background image shown blurred behind the
 panels), so a theme or a parent card can set them. `--l-photo-show: 0` gives the solid variant.
 
+When `--l-photo` is one image from your Home Assistant (or a site that sends CORS headers), each card blurs it once into
+a small image and shows that, so the tablet doesn't run a live blur over the whole page. Gradients and other images keep
+the live blur. Cards set `--l-photo-soft` and `--l-photo-filter` on themselves for this; you don't need to.
+
+### The theme
+
+[`themes/lamplight.yaml`](themes/lamplight.yaml) puts Home Assistant's own header, sidebar and stock cards in the
+Lamplight colours, so the rest of a dashboard matches the cards. The cards don't need it. Copy it to
+`<config>/themes/`, make sure `configuration.yaml` loads that folder:
+
+```yaml
+frontend:
+  themes: !include_dir_merge_named themes
+```
+
+then run *Home Assistant Core: Reload themes* (or restart) and pick **Lamplight** in your profile or as a dashboard
+view's theme. A theme can also set the cards' surfaces, for example `l-photo: 'url("/local/photos/kitchen.jpg")'`.
+
 ## Building on Lamplight
 
 `src/` is plain ES modules, and `dist/lamplight.js` is an ES module with the same exports, so your own cards can share
