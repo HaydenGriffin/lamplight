@@ -7,7 +7,7 @@ import { installDom } from './dom.mjs';
 const dom = installDom();
 const lib = await import('../src/index.js');
 const TAGS = ['agenda', 'help', 'info', 'timers', 'weather', 'wifi'].map((n) => `lamplight-${n}-card`);
-const API = ['BASE_CSS', 'LamplightCard', 'TOKENS', 'VERSION', 'cap', 'dayStart', 'define', 'esc', 'fontBase', 'registerFonts'];
+const API = ['BASE_CSS', 'LamplightCard', 'TOKENS', 'VERSION', 'cap', 'dayStart', 'define', 'esc', 'failedHtml', 'fontBase', 'loadState', 'registerFonts'];
 
 test('the core API is exported', () => {
   for (const name of API) assert.ok(name in lib, name);

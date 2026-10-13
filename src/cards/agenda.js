@@ -1,13 +1,14 @@
 /* Agenda: today and tomorrow from the household calendars, side by side. All-day items first, then timed events with
  * their time, whose calendar it is and a short place. What's on now is warm with a live dot; earlier events are dimmed;
  * cancelled ones are struck through. One calendar.get_events call per calendar, so a broken calendar can't blank the
- * page; refreshed every 10 minutes, at midnight and whenever a calendar's state changes.
+ * page; refreshed every 10 minutes, at midnight and whenever a calendar's state changes. If no calendar can be read the
+ * page says so, with Retry.
  *   type: custom:lamplight-agenda-card
  *   calendars:
  *     calendar.family: {name: Family, icon: mdi:home-heart}
  *     calendar.work: {name: Work, icon: mdi:briefcase-outline}
  */
-import { LamplightCard, dayStart, define, esc } from '../core.js';
+import { LamplightCard, dayStart, define, esc, failedHtml, loadState } from '../core.js';
 
 const DAY_MS = 86400e3;
 const AGENDA_REFRESH_MS = 10 * 60e3;
@@ -74,12 +75,14 @@ export class LamplightAgendaCard extends LamplightCard {
           start: s.at, end: Number.isFinite(en.at.getTime()) ? en.at : new Date(s.at.getTime() + (s.allDay ? DAY_MS : 3600e3)), place: shortPlace(e.location) });
       }
     });
-    this.events = events; this.failed = failed === this.calIds.length;
+    this.events = events; this.read = this.calIds.length - failed; this.failed = failed > 0;
     this.loadedAt = Date.now(); this.loadedDay = from.getTime();
     this.loading = false;
     this.render();
     requestAnimationFrame(() => this.revealNow());
   }
+
+  retry() { this.events = null; this.render(); this.load(); }
 
   /* After a load, scroll today's list so what's on now (or next) is in view; earlier events stay reachable above. */
   revealNow() {
@@ -103,7 +106,15 @@ export class LamplightAgendaCard extends LamplightCard {
     const root = this.shadowRoot; if (!root || !this._hass) return;
     const today = dayStart(new Date()); const tomorrow = addDays(today, 1);
     const t = this.dayEvents(today); const now = Date.now();
-    if (this.failed) this.setSub("Couldn't read the calendars");
+    const state = this.events ? loadState({ error: this.failed, count: this.read }) : 'loading';
+    root.querySelector('main').classList.toggle('failed', state === 'failed');
+    if (state === 'failed') {
+      this.setSub("Couldn't read the calendars", 'warn');
+      root.querySelector('.today').innerHTML = failedHtml(this.calIds.length > 1 ? 'the calendars' : 'the calendar');
+      root.querySelector('.tomorrow').innerHTML = '';
+      return;
+    }
+    if (state === 'loading') this.setSub('Loading…');
     else {
       const live = t.timed.filter((e) => !e.cancelled && e.start.getTime() <= now && e.end.getTime() > now);
       const next = t.timed.find((e) => !e.cancelled && e.start.getTime() > now);
@@ -147,6 +158,7 @@ export class LamplightAgendaCard extends LamplightCard {
   styles() {
     return `
       main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      main.failed{grid-template-columns:1fr} main.failed .tomorrow{display:none} main.failed .today{padding-bottom:12px}
       .day{background:var(--panel);border-radius:var(--r-tile);padding:12px 12px 0;display:flex;flex-direction:column;min-height:0;min-width:0}
       .day h2{margin:0 4px 8px;display:flex;align-items:baseline;gap:10px;font-size:17px;font-weight:600;color:var(--muted);line-height:1.2}
       .day h2 b{font-size:26px;color:var(--text)}

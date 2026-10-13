@@ -474,6 +474,26 @@ A 10px warm circle that pulses on a 1.6s loop, only beside "motion now", "playin
 - **Tabs:** two equal 56px pill tabs, phone-panel at rest with muted text, selected in sky with sky ink, each with a Lexend count badge.
 - **Rows:** at least 72px, 20px radius, phone-panel, disc then name and state, then a pill or round button. Lit rows get a smaller lamp wash.
 
+## Load states
+
+A card that fetches something (the forecast, the calendars) is always in one of four states, and says which. `loadState()`
+in `src/core.js` picks it from what the card knows:
+
+- **Loading:** a quiet muted line where the content will be ("Loading forecast…"). No spinners.
+- **Failed:** the fetch failed and there is nothing to show. The one "Couldn't load" block (`failedHtml()`): a 64px
+  outlined warning disc with `mdi:cloud-alert-outline` (The Outlined Warning Rule), "Couldn't load the forecast" in the
+  title size, "Check the connection, then try again." in muted, and a 56px raised-2 **Retry** pill. The header subtitle
+  says it too, in warn ("Forecast unavailable · checked 14:05").
+- **Empty:** it loaded and there is nothing: a neutral 72px disc, a bold line and a muted line ("Nothing on"). Never the
+  failed look, because nothing is wrong.
+- **Ready:** the content.
+
+**The Last Good Data Rule.** Something to show beats an error. A refresh that fails keeps what was on screen; Failed is
+only for a card with nothing to show. A page never says "Loading…" for good.
+
+**Retry** tries at once and shows Loading while it does. The cards also try again on their own (the forecast a minute
+later, the calendars on their 10-minute refresh), so a tablet left alone recovers without a tap.
+
 ## Actions
 
 Every tablet page and the phone follow these.

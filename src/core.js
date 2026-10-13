@@ -29,6 +29,16 @@ export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&a
 export const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 export const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
+/* A card's load state from what it knows: 'loading', 'failed' (an error and nothing to show), 'empty' or 'ready'.
+   Something to show beats an error, so a card keeps its last good data when a refresh fails (DESIGN.md, Load states). */
+export const loadState = ({ loading = false, error = null, count = 0 } = {}) => (count > 0 ? 'ready' : error ? 'failed' : loading ? 'loading' : 'empty');
+
+/* The one "Couldn't load" block: an outlined warning disc, what didn't load, and Retry, which calls the card's retry().
+   `what` is the thing, e.g. "the forecast". Its styles are in BASE_CSS. */
+export const failedHtml = (what) => `<div class="load-failed" role="status"><span class="lf-disc" aria-hidden="true"><ha-icon icon="mdi:cloud-alert-outline"></ha-icon></span>
+    <b>Couldn't load ${esc(what)}</b><span>Check the connection, then try again.</span>
+    <button class="lf-retry" data-act="retry"><ha-icon icon="mdi:refresh"></ha-icon>Retry</button></div>`;
+
 /* Every colour goes through these properties (The One Token Rule). --l-page, --l-panel and --l-photo can be set from a
    theme or a parent card: --l-photo is a background image shown blurred behind the panels, --l-photo-show: 0 hides it. */
 export const TOKENS = `
@@ -57,11 +67,17 @@ export const BASE_CSS = `${TOKENS}
   .icon[hidden],.back[hidden]{display:none}
   .title{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:4px}
   .title h1{margin:0;font-size:30px;font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sub{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+  .sub{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3} .sub.warn{color:var(--warn)}
   .disc{width:48px;height:48px;flex:0 0 48px;border-radius:50%;background:var(--raised);color:var(--text);display:inline-flex;align-items:center;justify-content:center}
   .disc.big{width:72px;height:72px;flex-basis:72px} .disc.big ha-icon{--mdc-icon-size:36px;color:var(--muted)}
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;color:var(--muted);font-size:18px;padding:16px}
   .empty b{font-size:26px;font-weight:600;color:var(--text)}
+  .load-failed{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:16px;color:var(--muted);font-size:17px}
+  .load-failed b{font-size:26px;font-weight:600;color:var(--text)}
+  .lf-disc{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--warn);box-shadow:inset 0 0 0 2px var(--warn)}
+  .lf-disc ha-icon{--mdc-icon-size:32px}
+  .lf-retry{margin-top:8px;height:56px;padding:0 22px 0 16px;border-radius:999px;background:var(--raised-2);font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+  .lf-retry ha-icon{--mdc-icon-size:22px}
   .toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:30;max-width:90%;background:var(--toast-ground);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:12px 22px;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .toast.error{background:var(--error-ground);color:var(--error-text);border-color:rgba(255,138,128,.45)} .toast[hidden]{display:none}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex-shrink:0;animation:pulse 1.6s ease-in-out infinite}
@@ -107,6 +123,7 @@ export class LamplightCard extends HTMLElement {
       if (!el || el.disabled) return;
       if (el.dataset.act === 'home') this.goHome();
       else if (el.dataset.act === 'back') this.goBack();
+      else if (el.dataset.act === 'retry') this.retry();
       else this.act(el.dataset.act, el);
     });
     const fit = () => requestAnimationFrame(() => this.style.setProperty('--l-top', `${Math.max(0, this.getBoundingClientRect().top)}px`));
@@ -114,6 +131,7 @@ export class LamplightCard extends HTMLElement {
     this.syncNav();
   }
   act() { }
+  retry() { }
   styles() { return ''; }
   connectedCallback() { this.syncNav(); }
   disconnectedCallback() { clearInterval(this.fitTimer); }

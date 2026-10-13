@@ -22,6 +22,10 @@ var dayStart = (d) => {
   return x;
 };
 var cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+var loadState = ({ loading = false, error = null, count = 0 } = {}) => count > 0 ? "ready" : error ? "failed" : loading ? "loading" : "empty";
+var failedHtml = (what) => `<div class="load-failed" role="status"><span class="lf-disc" aria-hidden="true"><ha-icon icon="mdi:cloud-alert-outline"></ha-icon></span>
+    <b>Couldn't load ${esc(what)}</b><span>Check the connection, then try again.</span>
+    <button class="lf-retry" data-act="retry"><ha-icon icon="mdi:refresh"></ha-icon>Retry</button></div>`;
 var TOKENS = `
   :host{display:block;
     --page:var(--l-page,#0b0c0f);--panel:var(--l-panel,rgba(22,24,29,.74));--panel-solid:#17191e;--raised:var(--l-raised,rgba(255,255,255,.08));--raised-2:var(--l-raised-2,rgba(255,255,255,.14));--line:rgba(255,255,255,.07);
@@ -46,11 +50,17 @@ var BASE_CSS = `${TOKENS}
   .icon[hidden],.back[hidden]{display:none}
   .title{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:4px}
   .title h1{margin:0;font-size:30px;font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sub{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+  .sub{font-size:17px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3} .sub.warn{color:var(--warn)}
   .disc{width:48px;height:48px;flex:0 0 48px;border-radius:50%;background:var(--raised);color:var(--text);display:inline-flex;align-items:center;justify-content:center}
   .disc.big{width:72px;height:72px;flex-basis:72px} .disc.big ha-icon{--mdc-icon-size:36px;color:var(--muted)}
   .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;color:var(--muted);font-size:18px;padding:16px}
   .empty b{font-size:26px;font-weight:600;color:var(--text)}
+  .load-failed{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:16px;color:var(--muted);font-size:17px}
+  .load-failed b{font-size:26px;font-weight:600;color:var(--text)}
+  .lf-disc{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--warn);box-shadow:inset 0 0 0 2px var(--warn)}
+  .lf-disc ha-icon{--mdc-icon-size:32px}
+  .lf-retry{margin-top:8px;height:56px;padding:0 22px 0 16px;border-radius:999px;background:var(--raised-2);font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+  .lf-retry ha-icon{--mdc-icon-size:22px}
   .toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:30;max-width:90%;background:var(--toast-ground);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:12px 22px;font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .toast.error{background:var(--error-ground);color:var(--error-text);border-color:rgba(255,138,128,.45)} .toast[hidden]{display:none}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex-shrink:0;animation:pulse 1.6s ease-in-out infinite}
@@ -114,6 +124,7 @@ var LamplightCard = class extends HTMLElement {
       if (!el || el.disabled) return;
       if (el.dataset.act === "home") this.goHome();
       else if (el.dataset.act === "back") this.goBack();
+      else if (el.dataset.act === "retry") this.retry();
       else this.act(el.dataset.act, el);
     });
     const fit = () => requestAnimationFrame(() => this.style.setProperty("--l-top", `${Math.max(0, this.getBoundingClientRect().top)}px`));
@@ -123,6 +134,8 @@ var LamplightCard = class extends HTMLElement {
     this.syncNav();
   }
   act() {
+  }
+  retry() {
   }
   styles() {
     return "";
@@ -299,12 +312,18 @@ var LamplightAgendaCard = class extends LamplightCard {
       }
     });
     this.events = events;
-    this.failed = failed === this.calIds.length;
+    this.read = this.calIds.length - failed;
+    this.failed = failed > 0;
     this.loadedAt = Date.now();
     this.loadedDay = from.getTime();
     this.loading = false;
     this.render();
     requestAnimationFrame(() => this.revealNow());
+  }
+  retry() {
+    this.events = null;
+    this.render();
+    this.load();
   }
   /* After a load, scroll today's list so what's on now (or next) is in view; earlier events stay reachable above. */
   revealNow() {
@@ -332,7 +351,15 @@ var LamplightAgendaCard = class extends LamplightCard {
     const tomorrow = addDays(today, 1);
     const t = this.dayEvents(today);
     const now = Date.now();
-    if (this.failed) this.setSub("Couldn't read the calendars");
+    const state = this.events ? loadState({ error: this.failed, count: this.read }) : "loading";
+    root.querySelector("main").classList.toggle("failed", state === "failed");
+    if (state === "failed") {
+      this.setSub("Couldn't read the calendars", "warn");
+      root.querySelector(".today").innerHTML = failedHtml(this.calIds.length > 1 ? "the calendars" : "the calendar");
+      root.querySelector(".tomorrow").innerHTML = "";
+      return;
+    }
+    if (state === "loading") this.setSub("Loading…");
     else {
       const live = t.timed.filter((e) => !e.cancelled && e.start.getTime() <= now && e.end.getTime() > now);
       const next = t.timed.find((e) => !e.cancelled && e.start.getTime() > now);
@@ -378,6 +405,7 @@ var LamplightAgendaCard = class extends LamplightCard {
   styles() {
     return `
       main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      main.failed{grid-template-columns:1fr} main.failed .tomorrow{display:none} main.failed .today{padding-bottom:12px}
       .day{background:var(--panel);border-radius:var(--r-tile);padding:12px 12px 0;display:flex;flex-direction:column;min-height:0;min-width:0}
       .day h2{margin:0 4px 8px;display:flex;align-items:baseline;gap:10px;font-size:17px;font-weight:600;color:var(--muted);line-height:1.2}
       .day h2 b{font-size:26px;color:var(--text)}
@@ -910,6 +938,8 @@ var LamplightTimersCard = class extends LamplightCard {
 define("lamplight-timers-card", LamplightTimersCard, "Lamplight Timers", "View Assist timers with countdowns and quick-start buttons.");
 
 // src/cards/weather.js
+var FORECAST_MS = 20 * 6e4;
+var FORECAST_RETRY_MS = 6e4;
 var W_ICON = {
   "clear-night": "weather-night",
   cloudy: "weather-cloudy",
@@ -945,27 +975,44 @@ var LamplightWeatherCard = class extends LamplightCard {
   update() {
     const w = this.st(this.config.entity);
     const sun = this.st("sun.sun");
-    const sig = `${w?.state}|${w?.attributes?.temperature}|${sun?.state}|${this.fc?.at || 0}`;
+    const sig = `${w?.state}|${w?.attributes?.temperature}|${sun?.state}|${this.fc?.at || 0}|${this.failedAt || 0}`;
     if (sig !== this.sig) {
       this.sig = sig;
       this.render();
     }
     this.load();
   }
-  async load() {
-    if (this.loading || this.fc && Date.now() - this.fc.at < 20 * 6e4) return;
+  async load(force = false) {
+    if (this.loading || !this._hass) return;
+    if (!force && this.fc && Date.now() - this.fc.at < FORECAST_MS) return;
+    if (!force && this.failedAt && Date.now() - this.failedAt < FORECAST_RETRY_MS) return;
     this.loading = true;
+    if (force) this.render();
     try {
       const id = this.config.entity;
       const ask = (type) => this._hass.callWS({ type: "call_service", domain: "weather", service: "get_forecasts", target: { entity_id: id }, service_data: { type }, return_response: true });
       const [h, d] = await Promise.all([ask("hourly"), ask("daily")]);
-      this.fc = { at: Date.now(), hourly: h.response?.[id]?.forecast || [], daily: d.response?.[id]?.forecast || [] };
-      this.sig = null;
-      this.render();
+      const hourly = h?.response?.[id]?.forecast;
+      const daily = d?.response?.[id]?.forecast;
+      if (!Array.isArray(hourly) || !Array.isArray(daily)) throw new Error("no forecast");
+      this.fc = { at: Date.now(), hourly, daily };
+      this.failedAt = 0;
     } catch {
-    } finally {
-      this.loading = false;
+      this.failedAt = Date.now();
     }
+    this.loading = false;
+    this.sig = null;
+    this.render();
+  }
+  retry() {
+    this.load(true);
+  }
+  /* The next 12 hours, and the forecast's load state (DESIGN.md, Load states). */
+  get hours() {
+    return (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 6e4).slice(0, 12);
+  }
+  forecastState(hours) {
+    return loadState({ loading: this.loading || !this.fc && !this.failedAt, error: !this.loading && this.failedAt, count: hours.length >= 2 ? hours.length : 0 });
   }
   sky(cond, day) {
     if (!day) return "night";
@@ -996,12 +1043,19 @@ var LamplightWeatherCard = class extends LamplightCard {
         <span><ha-icon icon="mdi:water-percent"></ha-icon><b>${Math.round(a.humidity ?? 0)}%</b><small>humidity</small></span>
         ${a.uv_index !== void 0 ? `<span><ha-icon icon="mdi:sun-wireless-outline"></ha-icon><b>${Math.round(a.uv_index)}</b><small>UV</small></span>` : ""}
       </div>`;
-    root.querySelector(".hours").innerHTML = this.hoursHtml();
-    root.querySelector(".days").innerHTML = this.daysHtml();
+    const hours = this.hours;
+    const state = this.forecastState(hours);
+    this.setSub(state === "failed" ? `Forecast unavailable · checked ${this.hhmm(this.failedAt)}` : "", state === "failed" ? "warn" : "");
+    root.querySelector(".right").classList.toggle("failed", state === "failed");
+    root.querySelector(".hours").innerHTML = this.hoursHtml(hours, state);
+    const days = root.querySelector(".days");
+    days.innerHTML = this.daysHtml();
+    days.hidden = !days.innerHTML;
   }
-  hoursHtml() {
-    const hours = (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 6e4).slice(0, 12);
-    if (hours.length < 2) return '<div class="loading">Loading forecast…</div>';
+  hoursHtml(hours, state) {
+    if (state === "failed") return failedHtml("the forecast");
+    if (state === "loading") return '<div class="loading">Loading forecast…</div>';
+    if (state === "empty") return '<div class="loading">No hourly forecast from this weather service</div>';
     const temps = hours.map((h) => h.temperature);
     let lo = Math.min(...temps);
     let hi = Math.max(...temps);
@@ -1074,6 +1128,8 @@ var LamplightWeatherCard = class extends LamplightCard {
       .h-rain{position:relative;width:60%;height:calc(var(--r) * .22);background:rgba(128,216,255,.5);border-radius:3px 3px 0 0;font-size:16px;color:var(--accent);display:flex;justify-content:center}
       .hcol ha-icon{--mdc-icon-size:20px;color:var(--sky-muted)}
       .h-time{font-size:16px;color:var(--sky-muted);font-variant-numeric:tabular-nums}
+      .right.failed .hours{flex:1;display:flex;background:rgba(0,0,0,.2);border-radius:var(--r-tile)}
+      .days[hidden]{display:none}
       .days{display:flex;flex-direction:column;gap:2px;background:rgba(0,0,0,.2);border-radius:var(--r-tile);padding:8px 14px}
       .days h2{margin-bottom:2px}
       .day{display:grid;grid-template-columns:52px 28px 70px 36px minmax(0,1fr) 36px;align-items:center;gap:8px;min-height:34px;font-size:19px}
@@ -1131,6 +1187,8 @@ export {
   dayStart,
   define,
   esc,
+  failedHtml,
   fontBase,
+  loadState,
   registerFonts
 };

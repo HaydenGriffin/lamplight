@@ -1,10 +1,15 @@
 /* Weather: now (big), the next 12 hours as a chart (temperature line and rain bars), and the next five days with
  * low–high bars on a shared scale. The page takes a sky colour from the condition and day or night instead of the photo.
+ * The forecast refreshes every 20 minutes. If it can't be fetched the card says so, with Retry, and tries again on its own
+ * a minute later; a refresh that fails keeps the last forecast.
  *   type: custom:lamplight-weather-card
  *   entity: weather.home
  *   wind_unit: km/h          # label only; the value comes from the weather entity
  */
-import { LamplightCard, cap, define, esc } from '../core.js';
+import { LamplightCard, cap, define, esc, failedHtml, loadState } from '../core.js';
+
+const FORECAST_MS = 20 * 60e3;
+const FORECAST_RETRY_MS = 60e3;
 
 const W_ICON = {
   'clear-night': 'weather-night', cloudy: 'weather-cloudy', exceptional: 'alert-circle-outline', fog: 'weather-fog', hail: 'weather-hail',
@@ -26,21 +31,34 @@ export class LamplightWeatherCard extends LamplightCard {
 
   update() {
     const w = this.st(this.config.entity); const sun = this.st('sun.sun');
-    const sig = `${w?.state}|${w?.attributes?.temperature}|${sun?.state}|${this.fc?.at || 0}`;
+    const sig = `${w?.state}|${w?.attributes?.temperature}|${sun?.state}|${this.fc?.at || 0}|${this.failedAt || 0}`;
     if (sig !== this.sig) { this.sig = sig; this.render(); }
     this.load();
   }
 
-  async load() {
-    if (this.loading || (this.fc && Date.now() - this.fc.at < 20 * 60e3)) return;
+  async load(force = false) {
+    if (this.loading || !this._hass) return;
+    if (!force && this.fc && Date.now() - this.fc.at < FORECAST_MS) return;
+    if (!force && this.failedAt && Date.now() - this.failedAt < FORECAST_RETRY_MS) return;
     this.loading = true;
+    if (force) this.render();
     try {
       const id = this.config.entity;
       const ask = (type) => this._hass.callWS({ type: 'call_service', domain: 'weather', service: 'get_forecasts', target: { entity_id: id }, service_data: { type }, return_response: true });
       const [h, d] = await Promise.all([ask('hourly'), ask('daily')]);
-      this.fc = { at: Date.now(), hourly: h.response?.[id]?.forecast || [], daily: d.response?.[id]?.forecast || [] };
-      this.sig = null; this.render();
-    } catch { /* keep the last forecast */ } finally { this.loading = false; }
+      const hourly = h?.response?.[id]?.forecast; const daily = d?.response?.[id]?.forecast;
+      if (!Array.isArray(hourly) || !Array.isArray(daily)) throw new Error('no forecast');
+      this.fc = { at: Date.now(), hourly, daily }; this.failedAt = 0;
+    } catch { this.failedAt = Date.now(); /* the last forecast stays */ }
+    this.loading = false; this.sig = null; this.render();
+  }
+
+  retry() { this.load(true); }
+
+  /* The next 12 hours, and the forecast's load state (DESIGN.md, Load states). */
+  get hours() { return (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 60e3).slice(0, 12); }
+  forecastState(hours) {
+    return loadState({ loading: this.loading || (!this.fc && !this.failedAt), error: !this.loading && this.failedAt, count: hours.length >= 2 ? hours.length : 0 });
   }
 
   sky(cond, day) {
@@ -68,13 +86,17 @@ export class LamplightWeatherCard extends LamplightCard {
         <span><ha-icon icon="mdi:water-percent"></ha-icon><b>${Math.round(a.humidity ?? 0)}%</b><small>humidity</small></span>
         ${a.uv_index !== undefined ? `<span><ha-icon icon="mdi:sun-wireless-outline"></ha-icon><b>${Math.round(a.uv_index)}</b><small>UV</small></span>` : ''}
       </div>`;
-    root.querySelector('.hours').innerHTML = this.hoursHtml();
-    root.querySelector('.days').innerHTML = this.daysHtml();
+    const hours = this.hours; const state = this.forecastState(hours);
+    this.setSub(state === 'failed' ? `Forecast unavailable · checked ${this.hhmm(this.failedAt)}` : '', state === 'failed' ? 'warn' : '');
+    root.querySelector('.right').classList.toggle('failed', state === 'failed');
+    root.querySelector('.hours').innerHTML = this.hoursHtml(hours, state);
+    const days = root.querySelector('.days'); days.innerHTML = this.daysHtml(); days.hidden = !days.innerHTML;
   }
 
-  hoursHtml() {
-    const hours = (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 60e3).slice(0, 12);
-    if (hours.length < 2) return '<div class="loading">Loading forecast…</div>';
+  hoursHtml(hours, state) {
+    if (state === 'failed') return failedHtml('the forecast');
+    if (state === 'loading') return '<div class="loading">Loading forecast…</div>';
+    if (state === 'empty') return '<div class="loading">No hourly forecast from this weather service</div>';
     const temps = hours.map((h) => h.temperature); let lo = Math.min(...temps); let hi = Math.max(...temps);
     if (hi - lo < 3) { lo -= 1.5; hi += 1.5; }
     const maxRain = Math.max(1, ...hours.map((h) => h.precipitation || 0));
@@ -138,6 +160,8 @@ export class LamplightWeatherCard extends LamplightCard {
       .h-rain{position:relative;width:60%;height:calc(var(--r) * .22);background:rgba(128,216,255,.5);border-radius:3px 3px 0 0;font-size:16px;color:var(--accent);display:flex;justify-content:center}
       .hcol ha-icon{--mdc-icon-size:20px;color:var(--sky-muted)}
       .h-time{font-size:16px;color:var(--sky-muted);font-variant-numeric:tabular-nums}
+      .right.failed .hours{flex:1;display:flex;background:rgba(0,0,0,.2);border-radius:var(--r-tile)}
+      .days[hidden]{display:none}
       .days{display:flex;flex-direction:column;gap:2px;background:rgba(0,0,0,.2);border-radius:var(--r-tile);padding:8px 14px}
       .days h2{margin-bottom:2px}
       .day{display:grid;grid-template-columns:52px 28px 70px 36px minmax(0,1fr) 36px;align-items:center;gap:8px;min-height:34px;font-size:19px}
