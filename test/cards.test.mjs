@@ -109,3 +109,34 @@ test('the page photo is blurred once into an image; without one the live blur st
     delete globalThis.Image; delete globalThis.getComputedStyle; document.createElement = createElement;
   }
 });
+
+test('info: a reply that is not an answer shows "Didn\'t catch that" with the configured wake phrase', async () => {
+  const { isMisfire } = await import('../src/cards/info.js');
+  assert.ok(isMisfire("Sorry, I couldn't understand that"));
+  assert.ok(isMisfire('Hey Jarvis.', 'Hey Jarvis'));
+  assert.ok(!isMisfire('Hey Jarvis.'));
+  assert.ok(!isMisfire('It is 14 degrees and sunny.'));
+  assert.ok(!isMisfire(`${'A long answer that mentions it could not understand the question. '.repeat(3)}`));
+
+  const va = { message: "Sorry, I couldn't understand that", title: '', image: '/local/pic.jpg', mode: 'normal',
+    alert_data: { header: 'Door open', line1: 'The back door is open', line2: 'for 10 minutes' } };
+  const hass = fakeHass({ 'sensor.viewassist_hall': { state: 'normal', attributes: va } });
+  const card = new lib.LamplightInfoCard();
+  card.setConfig({ view_assist_sensor: 'sensor.viewassist_hall', wake_phrase: 'Hey Jarvis' });
+  card.hass = hass;
+  const main = card.shadowRoot.querySelector('main');
+  assert.match(main.innerHTML, /Didn't catch that.*Say "Hey Jarvis" and try again.*It replied: Sorry, I couldn&#39;t understand that/s);
+  assert.ok(card.shadowRoot.querySelector('.keep').hidden);
+
+  location.search = '?alert=1';
+  card.hass = { ...hass };
+  assert.equal(card.shadowRoot.querySelector('h1').textContent, 'Door open');
+  assert.match(card.shadowRoot.querySelector('main').innerHTML, /The back door is open\nfor 10 minutes/);
+
+  location.search = '?pic=1';
+  va.message = 'Here is the garden camera';
+  card.hass = { ...hass };
+  assert.match(card.shadowRoot.querySelector('main').innerHTML, /<img src="\/local\/pic.jpg"/);
+  location.search = '';
+  card.disconnectedCallback();
+});

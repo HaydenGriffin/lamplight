@@ -119,8 +119,14 @@ categories:
 
 ```yaml
 type: custom:lamplight-info-card
-show_image: true    # for View Assist's infopic view
+show_image: true          # for View Assist's infopic view
+wake_phrase: Okay Nabu    # optional: named in "Didn't catch that"
 ```
+
+A short reply that isn't an answer ("Sorry, I couldn't understand that", the greeting after a bare wake word) shows as
+"Didn't catch that", with what it replied underneath. `?pic=1` in the page's address shows the image without
+`show_image`, and `?alert=1` shows View Assist's `alert_data` (its header, then `line1` and `line2`), so one info view
+can stand in for View Assist's `infopic` and `alert` views.
 
 ### Wi-Fi
 

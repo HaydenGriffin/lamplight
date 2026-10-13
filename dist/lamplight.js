@@ -731,10 +731,28 @@ var notePage = () => {
 notePage();
 window.addEventListener("location-changed", notePage);
 window.addEventListener("popstate", notePage);
+var MISFIRE = [
+  /hasn'?t been defined/i,
+  /\bisn'?t defined\b/i,
+  /couldn'?t understand/i,
+  /not (?:sure|aware) (?:what|of)/i,
+  /^no (?:device|entity|area|timer)s?\b.{0,30}\b(?:named|called|found)\b/i,
+  /^sorry,? i (?:didn'?t|did not|can'?t|cannot)/i,
+  /unexpected error/i,
+  /^(?:hello|hi)[.!,]? i'?m (?:here|ready) to help/i,
+  /what can i do for you(?: today)?\??$/i
+];
+var reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var isMisfire = (text, wake = "") => {
+  const t = String(text || "").trim();
+  if (!t || t.length >= 140) return false;
+  const bare = wake ? new RegExp(`^["']?${reEscape(String(wake).trim())}[.!?,]*["']?$`, "i") : null;
+  return MISFIRE.some((re) => re.test(t)) || !!bare?.test(t);
+};
 var formatMessage = (text) => esc(String(text ?? "").trim()).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^[ \t]*[*-][ \t]+/gm, "• ");
 var LamplightInfoCard = class extends LamplightCard {
   defaults() {
-    return { show_image: false };
+    return { show_image: false, wake_phrase: "" };
   }
   build() {
     this.built = true;
@@ -742,7 +760,7 @@ var LamplightInfoCard = class extends LamplightCard {
   }
   update() {
     const a = this.st(this.vaSensor)?.attributes || {};
-    const sig = JSON.stringify([a.title, a.message, this.config.show_image ? a.image : "", a.mode]);
+    const sig = JSON.stringify([a.title, a.message, a.image, a.alert_data, a.mode, location.search]);
     if (sig === this.sig) return;
     if (a.message !== this.lastMessage) {
       this.lastMessage = a.message;
@@ -766,9 +784,11 @@ var LamplightInfoCard = class extends LamplightCard {
     if (!root || !this._hass) return;
     this.syncNav();
     const a = this.st(this.vaSensor)?.attributes || {};
-    const title = String(a.title || "").trim();
-    const message = String(a.message || "").trim();
-    const image = this.config.show_image ? String(a.image || "").trim() : "";
+    const q = new URLSearchParams(location.search || "");
+    const alert = q.get("alert") === "1" && a.alert_data && typeof a.alert_data === "object" ? a.alert_data : null;
+    const title = String(alert ? alert.header || "Alert" : a.title || "").trim();
+    const message = String(alert ? [alert.line1, alert.line2].filter(Boolean).join("\n") : a.message || "").trim();
+    const image = this.config.show_image || q.get("pic") === "1" ? String(a.image || "").trim() : "";
     const kept = a.mode === "hold";
     root.querySelector("h1").textContent = title || "Assistant";
     const said = `said at ${this.hhmm(this.saidAt || Date.now())}`;
@@ -784,6 +804,14 @@ var LamplightInfoCard = class extends LamplightCard {
     if (!message && !image) {
       main.innerHTML = `<section class="msg empty"><span class="disc big"><ha-icon icon="mdi:message-text-outline"></ha-icon></span>
         <b>Nothing to show</b><span>Ask something and the answer shows here.</span></section>`;
+      return;
+    }
+    if (!alert && !image && isMisfire(message, this.config.wake_phrase)) {
+      keep.hidden = true;
+      root.querySelector("h1").textContent = "Assistant";
+      const wake = String(this.config.wake_phrase || "").trim();
+      main.innerHTML = `<section class="msg empty misfire"><span class="disc big"><ha-icon icon="mdi:microphone-question"></ha-icon></span>
+        <b>Didn't catch that</b><span>${wake ? `Say "${esc(wake)}" and try again.` : "Try asking again."}</span><small>It replied: ${esc(message)}</small></section>`;
       return;
     }
     main.innerHTML = `${image ? `<figure class="img"><img src="${esc(image)}" alt=""></figure>` : ""}
@@ -849,7 +877,8 @@ var LamplightInfoCard = class extends LamplightCard {
       .more[hidden]{display:none} .more ha-icon{--mdc-icon-size:20px}
       .img{margin:0;background:var(--panel);border-radius:var(--r-tile);padding:12px;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;overflow:hidden}
       .img img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--r-sm)}
-      .msg.empty{align-items:center;justify-content:center;gap:8px;text-align:center;color:var(--muted);font-size:19px}`;
+      .msg.empty{align-items:center;justify-content:center;gap:8px;text-align:center;color:var(--muted);font-size:19px}
+      .msg.misfire small{margin-top:10px;font-size:16px;max-width:80%;overflow-wrap:anywhere}`;
   }
 };
 define("lamplight-info-card", LamplightInfoCard, "Lamplight Info", "The assistant's last answer, large, for View Assist tablets.");
