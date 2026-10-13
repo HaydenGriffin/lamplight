@@ -931,14 +931,6 @@ var leftHtml = (sec) => {
   if (h) return `${part(h, "h")} ${part(String(m).padStart(2, "0"), "min")}`;
   return m ? `${part(m, "min")} ${part(x, "s")}` : part(x, "s");
 };
-var timeWords = (sec) => {
-  const s = Math.max(1, Math.round(sec));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor(s % 3600 / 60);
-  const x = s % 60;
-  const part = (n, unit) => n ? `${n} ${unit}${n === 1 ? "" : "s"}` : "";
-  return [part(h, "hour"), part(m, "minute"), part(x, "second")].filter(Boolean).join(" ");
-};
 var LamplightTimersCard = class extends LamplightCard {
   defaults() {
     return { quick_minutes: [5, 10, 15, 20], appliance_timers: [] };
@@ -1112,7 +1104,7 @@ var LamplightTimersCard = class extends LamplightCard {
     const again = t.cls === "timer" && !t.paused && t.left > 0 ? () => this.call("view_assist", "set_timer", {
       entity_id: this.vaSensor,
       type: "timer",
-      time: timeWords(Math.max(UNDO_MIN_S, t.left)),
+      time: `${Math.round(Math.max(UNDO_MIN_S, t.left))} seconds`,
       ...t.name ? { name: t.name } : {}
     }, `${label} back on`) : null;
     this.call("view_assist", "cancel_timer", { timer_id: t.id }, `${label} cancelled`, again);

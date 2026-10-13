@@ -209,7 +209,7 @@ test('timers: paused rows, Undo on a cancelled timer, and the two-tap arm for al
   const again = hass.calls.at(-1);
   assert.equal(again.service, 'set_timer');
   assert.equal(again.data.name, 'pasta');
-  assert.match(again.data.time, /^4 minutes (29|30) seconds$/);
+  assert.match(again.data.time, /^(269|270) seconds$/);
 
   const before = hass.calls.length;
   root.tap({ act: 'cancel', arg: 'a1', name: 'Wake up' });
