@@ -54,6 +54,7 @@ export class LamplightWeatherCard extends LamplightCard {
   }
 
   retry() { this.load(true); }
+  softenPhoto() { }  // the sky replaces the photo here
 
   /* The next 12 hours, and the forecast's load state (DESIGN.md, Load states). */
   get hours() { return (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 60e3).slice(0, 12); }

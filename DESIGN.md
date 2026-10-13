@@ -408,6 +408,8 @@ Depth comes from the photo and translucency, not shadows. The blurred room photo
 
 **The No Frost Rule.** No `backdrop-filter`, ever. The glass look comes from the pre-blurred photo layer and translucent fills; the kiosk WebView is too slow for live blur.
 
+**Pre-blur.** The live `filter: blur()` on the photo layer is the fallback, not the norm. When `--l-photo` is one image the page may read back (same origin, or served with CORS), the core blurs it once into a 160px-wide canvas with the same look (the blur scaled to that width, brightness .36, saturate 1.15) and sets `--l-photo-soft` to the result and `--l-photo-filter: none` on the card, so the kiosk paints a plain image. Scaled up, it looks the same. Each photo is blurred once for every card on the page. Gradients, other sites' photos without CORS and browsers without canvas filters keep the live blur. Weather has no photo layer (the sky replaces it) and skips it.
+
 **The Solid Variant Rule.** Pages never paint their own background over the photo layer. Setting `--l-photo-show: 0` and pointing `--l-panel` at panel-solid gives the Solid variant; cards read `--l-page`, `--l-panel` and `--l-photo` so it works.
 
 ## Shapes

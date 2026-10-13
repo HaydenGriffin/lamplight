@@ -80,3 +80,32 @@ test('the page fit: one shared observer while cards are connected, gone after, b
   assert.equal(dom.listeners.resize.size, 1);
   b.disconnectedCallback();
 });
+
+test('the page photo is blurred once into an image; without one the live blur stays', async () => {
+  const drawn = [];
+  globalThis.Image = class { set src(v) { this.url = v; this.naturalWidth = 1600; this.naturalHeight = 1000; setTimeout(() => this.onload()); } };
+  const createElement = document.createElement;
+  document.createElement = (tag) => (tag === 'canvas' ? { getContext: () => ({ filter: '', drawImage() { drawn.push(this.filter); } }), toDataURL: () => 'data:image/jpeg;base64,AAAA' } : createElement(tag));
+  let photo = 'url("/local/room.jpg")';
+  globalThis.getComputedStyle = () => ({ getPropertyValue: (k) => (k === '--l-photo' ? photo : '') });
+  globalThis.location.href = 'http://ha.local/home';
+  globalThis.location.origin = 'http://ha.local';
+  try {
+    assert.match(lib.BASE_CSS, /var\(--l-photo-soft,var\(--l-photo,none\)\).*filter:var\(--l-photo-filter,blur\(26px\) brightness\(0\.36\) saturate\(1\.15\)\)/);
+    const card = new lib.LamplightWifiCard(); card.setConfig({ qr: '/local/qr.svg' }); card.hass = fakeHass();
+    await tick(); await tick();  // shell() started it
+    assert.equal(card.style.getPropertyValue('--l-photo-soft'), 'url("data:image/jpeg;base64,AAAA")');
+    assert.equal(card.style.getPropertyValue('--l-photo-filter'), 'none');
+    const other = new lib.LamplightHelpCard(); other.setConfig({ categories: [{ name: 'A', examples: [] }] }); other.hass = fakeHass();
+    await tick(); await tick();
+    assert.equal(drawn.length, 1);  // the same photo is blurred once for every card
+    assert.match(drawn[0], /^blur\(5\.28px\)/);  // 26px at 160 of 788px
+    photo = 'radial-gradient(#000, #111)';
+    card.connectedCallback(); await tick();
+    assert.equal(card.style.getPropertyValue('--l-photo-soft'), '');
+    assert.equal(card.style.getPropertyValue('--l-photo-filter'), '');
+    card.disconnectedCallback(); other.disconnectedCallback();
+  } finally {
+    delete globalThis.Image; delete globalThis.getComputedStyle; document.createElement = createElement;
+  }
+});

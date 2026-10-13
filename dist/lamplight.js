@@ -26,6 +26,50 @@ var loadState = ({ loading = false, error = null, count = 0 } = {}) => count > 0
 var failedHtml = (what) => `<div class="load-failed" role="status"><span class="lf-disc" aria-hidden="true"><ha-icon icon="mdi:cloud-alert-outline"></ha-icon></span>
     <b>Couldn't load ${esc(what)}</b><span>Check the connection, then try again.</span>
     <button class="lf-retry" data-act="retry"><ha-icon icon="mdi:refresh"></ha-icon>Retry</button></div>`;
+var PHOTO_LOOK = { blur: 26, brightness: 0.36, saturate: 1.15 };
+var photoFilter = (look, scale = 1) => `blur(${+(look.blur * scale).toFixed(2)}px) brightness(${look.brightness}) saturate(${look.saturate})`;
+var softened = /* @__PURE__ */ new Map();
+var preblur = (url, look = PHOTO_LOOK, width = 160) => {
+  if (!url) return Promise.resolve(null);
+  const key = `${url}|${photoFilter(look)}`;
+  if (!softened.has(key)) {
+    softened.set(key, new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.decoding = "async";
+        const abs = new URL(url, location.href);
+        if (abs.origin !== location.origin) img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const w = width;
+            const h = Math.max(1, Math.round(w * (img.naturalHeight / img.naturalWidth || 0.625)));
+            const scale = w / 788;
+            const pad = Math.ceil(look.blur * scale * 2);
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            if (!ctx || !("filter" in ctx)) {
+              resolve(null);
+              return;
+            }
+            ctx.filter = photoFilter(look, scale);
+            ctx.drawImage(img, -pad, -pad, w + pad * 2, h + pad * 2);
+            resolve(canvas.toDataURL("image/jpeg", 0.86));
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = abs.href;
+      } catch {
+        resolve(null);
+      }
+    }));
+    if (softened.size > 12) softened.delete(softened.keys().next().value);
+  }
+  return softened.get(key);
+};
 var TOKENS = `
   :host{display:block;
     --page:var(--l-page,#0b0c0f);--panel:var(--l-panel,rgba(22,24,29,.74));--panel-solid:#17191e;--raised:var(--l-raised,rgba(255,255,255,.08));--raised-2:var(--l-raised-2,rgba(255,255,255,.14));--line:rgba(255,255,255,.07);
@@ -36,7 +80,7 @@ var TOKENS = `
 var BASE_CSS = `${TOKENS}
   *{box-sizing:border-box}
   ha-card{position:relative;height:var(--l-height,calc(100dvh - var(--l-top,0px)));min-height:420px;background:var(--page);color:var(--text);border:0;border-radius:0;display:flex;flex-direction:column;gap:10px;padding:12px 14px;overflow:hidden;font-family:var(--text-font);font-size:19px}
-  ha-card::before{content:'';position:absolute;inset:-48px;z-index:0;background:var(--l-photo,none) center/cover no-repeat;filter:blur(26px) brightness(.36) saturate(1.15);opacity:var(--l-photo-show,1);pointer-events:none}
+  ha-card::before{content:'';position:absolute;inset:-48px;z-index:0;background:var(--l-photo-soft,var(--l-photo,none)) center/cover no-repeat;filter:var(--l-photo-filter,${photoFilter(PHOTO_LOOK)});opacity:var(--l-photo-show,1);pointer-events:none}
   ha-card > *{position:relative;z-index:1}
   button{font:inherit;color:inherit;background:var(--raised);border:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   button:active{filter:brightness(1.25)} button:disabled{opacity:.5;cursor:default}
@@ -160,7 +204,10 @@ var LamplightCard = class extends HTMLElement {
       else if (el.dataset.act === "retry") this.retry();
       else this.act(el.dataset.act, el);
     });
-    if (this.isConnected) this.startFit();
+    if (this.isConnected) {
+      this.startFit();
+      this.softenPhoto();
+    }
     this.syncNav();
   }
   act() {
@@ -175,6 +222,7 @@ var LamplightCard = class extends HTMLElement {
   connectedCallback() {
     this.syncNav();
     this.startFit();
+    this.softenPhoto();
   }
   disconnectedCallback() {
     this.stopFit();
@@ -185,6 +233,23 @@ var LamplightCard = class extends HTMLElement {
   stopFit() {
     this.unfit?.();
     this.unfit = null;
+  }
+  /* Shows the page photo pre-blurred (see preblur) when --l-photo is one image; otherwise the live blur stays. */
+  async softenPhoto() {
+    if (!this.shadowRoot || typeof getComputedStyle !== "function") return;
+    const css = getComputedStyle(this);
+    const url = css.getPropertyValue("--l-photo-show").trim() === "0" ? "" : /^\s*url\((['"]?)(.+?)\1\)\s*$/.exec(css.getPropertyValue("--l-photo"))?.[2] || "";
+    if (url === this.softFor) return;
+    this.softFor = url;
+    const soft = await preblur(url);
+    if (this.softFor !== url) return;
+    if (soft) {
+      this.style.setProperty("--l-photo-soft", `url("${soft}")`);
+      this.style.setProperty("--l-photo-filter", "none");
+    } else {
+      this.style.removeProperty("--l-photo-soft");
+      this.style.removeProperty("--l-photo-filter");
+    }
   }
   /* HA keeps views alive, so the header is refreshed each time the card is shown. */
   syncNav() {
@@ -1044,6 +1109,9 @@ var LamplightWeatherCard = class extends LamplightCard {
   retry() {
     this.load(true);
   }
+  softenPhoto() {
+  }
+  // the sky replaces the photo here
   /* The next 12 hours, and the forecast's load state (DESIGN.md, Load states). */
   get hours() {
     return (this.fc?.hourly || []).filter((h) => Date.parse(h.datetime) >= Date.now() - 30 * 6e4).slice(0, 12);
@@ -1218,6 +1286,7 @@ export {
   LamplightTimersCard,
   LamplightWeatherCard,
   LamplightWifiCard,
+  PHOTO_LOOK,
   TOKENS,
   VERSION,
   cap,
@@ -1227,5 +1296,6 @@ export {
   failedHtml,
   fontBase,
   loadState,
+  preblur,
   registerFonts
 };
