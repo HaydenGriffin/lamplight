@@ -66,6 +66,39 @@ var BASE_CSS = `${TOKENS}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex-shrink:0;animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
   @media (prefers-reduced-motion:reduce){.dot{animation:none}}`;
+var fitted = /* @__PURE__ */ new Set();
+var fitObserver = null;
+var fitFrame = 0;
+var place = (card) => {
+  card.style.setProperty("--l-top", `${Math.max(0, card.getBoundingClientRect().top)}px`);
+  card.resized();
+};
+var placeAll = () => {
+  if (fitFrame) return;
+  fitFrame = requestAnimationFrame(() => {
+    fitFrame = 0;
+    fitted.forEach(place);
+  });
+};
+var fit = (card) => {
+  if (!fitted.size) {
+    window.addEventListener("resize", placeAll);
+    window.addEventListener("lamplight-layout", placeAll);
+    if (typeof ResizeObserver === "function") fitObserver = new ResizeObserver(placeAll);
+  }
+  fitted.add(card);
+  fitObserver?.observe(card);
+  requestAnimationFrame(() => place(card));
+  return () => {
+    if (!fitted.delete(card)) return;
+    fitObserver?.unobserve(card);
+    if (fitted.size) return;
+    fitObserver?.disconnect();
+    fitObserver = null;
+    window.removeEventListener("resize", placeAll);
+    window.removeEventListener("lamplight-layout", placeAll);
+  };
+};
 var LamplightCard = class extends HTMLElement {
   setConfig(config) {
     this.config = { ...this.defaults(), ...config };
@@ -127,24 +160,31 @@ var LamplightCard = class extends HTMLElement {
       else if (el.dataset.act === "retry") this.retry();
       else this.act(el.dataset.act, el);
     });
-    const fit = () => requestAnimationFrame(() => this.style.setProperty("--l-top", `${Math.max(0, this.getBoundingClientRect().top)}px`));
-    fit();
-    window.addEventListener("resize", fit);
-    this.fitTimer = setInterval(fit, 2e3);
+    if (this.isConnected) this.startFit();
     this.syncNav();
   }
   act() {
   }
   retry() {
   }
+  resized() {
+  }
   styles() {
     return "";
   }
   connectedCallback() {
     this.syncNav();
+    this.startFit();
   }
   disconnectedCallback() {
-    clearInterval(this.fitTimer);
+    this.stopFit();
+  }
+  startFit() {
+    if (this.shadowRoot && !this.unfit) this.unfit = fit(this);
+  }
+  stopFit() {
+    this.unfit?.();
+    this.unfit = null;
   }
   /* HA keeps views alive, so the header is refreshed each time the card is shown. */
   syncNav() {
@@ -634,8 +674,6 @@ var LamplightInfoCard = class extends LamplightCard {
   build() {
     this.built = true;
     this.shell("Assistant", "<main></main>", { extra: '<button class="keep" data-act="keep"></button>' });
-    this.fit = () => requestAnimationFrame(() => this.fitText());
-    window.addEventListener("resize", this.fit);
   }
   update() {
     const a = this.st(this.vaSensor)?.attributes || {};
@@ -648,9 +686,8 @@ var LamplightInfoCard = class extends LamplightCard {
     this.sig = sig;
     this.render();
   }
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    window.removeEventListener("resize", this.fit);
+  resized() {
+    this.fitText();
   }
   backLabel() {
     if (window.lamplightNav?.backLabel) return window.lamplightNav.backLabel();

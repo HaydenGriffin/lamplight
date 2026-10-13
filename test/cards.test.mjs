@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fakeHass, installDom } from './dom.mjs';
 
-installDom();
+const dom = installDom();
 const lib = await import('../src/index.js');
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -62,4 +62,21 @@ test('agenda: no calendar read is a failed load with Retry; one read is enough t
   assert.match(root.querySelector('.today').innerHTML, /Nothing on/);
   assert.ok(!root.querySelector('main').classList.contains('failed'));
   card.disconnectedCallback();
+});
+
+test('the page fit: one shared observer while cards are connected, gone after, back on a reconnect', () => {
+  const a = new lib.LamplightWifiCard(); a.setConfig({ qr: '/local/qr.svg' }); a.hass = fakeHass();
+  const b = new lib.LamplightWifiCard(); b.setConfig({ qr: '/local/qr.svg' }); b.hass = fakeHass();
+  assert.deepEqual([...dom.observed], [a, b]);
+  assert.equal(dom.listeners.resize.size, 1);
+  assert.equal(a.style.getPropertyValue('--l-top'), '0px');
+  a.disconnectedCallback();
+  assert.deepEqual([...dom.observed], [b]);
+  b.disconnectedCallback();
+  assert.equal(dom.observed.size, 0);
+  assert.equal(dom.listeners.resize.size, 0);
+  b.connectedCallback();
+  assert.deepEqual([...dom.observed], [b]);
+  assert.equal(dom.listeners.resize.size, 1);
+  b.disconnectedCallback();
 });

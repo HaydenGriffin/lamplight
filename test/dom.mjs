@@ -57,12 +57,21 @@ export function installDom({ fontBase } = {}) {
     head: { appendChild: (el) => head.push(el) },
   };
   globalThis.location = { pathname: '/home', search: '' };
-  globalThis.addEventListener = () => {};
+  const listeners = {};
+  globalThis.addEventListener = (type, fn) => { (listeners[type] ||= new Set()).add(fn); };
+  globalThis.removeEventListener = (type, fn) => { listeners[type]?.delete(fn); };
+  const observed = new Set();
+  globalThis.ResizeObserver = class {
+    constructor(fn) { this.fn = fn; }
+    observe(el) { observed.add(el); }
+    unobserve(el) { observed.delete(el); }
+    disconnect() { observed.clear(); }
+  };
   globalThis.requestAnimationFrame = (fn) => { fn(); return 0; };
   globalThis.customCards = undefined;
   if (fontBase) globalThis.lamplightFontBase = fontBase;
   else delete globalThis.lamplightFontBase;
-  return { defined, head };
+  return { defined, head, listeners, observed };
 }
 
 /* A stand-in Home Assistant: states, and callService / callWS answered by the test (or a plain resolve). */

@@ -84,6 +84,33 @@ export const BASE_CSS = `${TOKENS}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
   @media (prefers-reduced-motion:reduce){.dot{animation:none}}`;
 
+/* The page fit: a card's --l-top is its distance from the top of the screen (Home Assistant's header, when it shows), so
+   the card fills the rest of it. One ResizeObserver and one resize listener serve every card on the page, attached while
+   any card is connected; a dashboard that moves things without a resize can dispatch 'lamplight-layout' on window.
+   After placing a card, its resized() hook runs (the info card refits its text there). */
+const fitted = new Set();
+let fitObserver = null; let fitFrame = 0;
+const place = (card) => { card.style.setProperty('--l-top', `${Math.max(0, card.getBoundingClientRect().top)}px`); card.resized(); };
+const placeAll = () => {
+  if (fitFrame) return;
+  fitFrame = requestAnimationFrame(() => { fitFrame = 0; fitted.forEach(place); });
+};
+const fit = (card) => {
+  if (!fitted.size) {
+    window.addEventListener('resize', placeAll); window.addEventListener('lamplight-layout', placeAll);
+    if (typeof ResizeObserver === 'function') fitObserver = new ResizeObserver(placeAll);
+  }
+  fitted.add(card); fitObserver?.observe(card);
+  requestAnimationFrame(() => place(card));
+  return () => {
+    if (!fitted.delete(card)) return;
+    fitObserver?.unobserve(card);
+    if (fitted.size) return;
+    fitObserver?.disconnect(); fitObserver = null;
+    window.removeEventListener('resize', placeAll); window.removeEventListener('lamplight-layout', placeAll);
+  };
+};
+
 /* A card's shared behaviour. Navigation, in order of preference:
      1. window.lamplightNav = { home(), back(), backLabel() } if the dashboard provides one;
      2. View Assist: on a tablet with a View Assist sensor, the clock goes to its home screen;
@@ -126,15 +153,17 @@ export class LamplightCard extends HTMLElement {
       else if (el.dataset.act === 'retry') this.retry();
       else this.act(el.dataset.act, el);
     });
-    const fit = () => requestAnimationFrame(() => this.style.setProperty('--l-top', `${Math.max(0, this.getBoundingClientRect().top)}px`));
-    fit(); window.addEventListener('resize', fit); this.fitTimer = setInterval(fit, 2000);
+    if (this.isConnected) this.startFit();
     this.syncNav();
   }
   act() { }
   retry() { }
+  resized() { }
   styles() { return ''; }
-  connectedCallback() { this.syncNav(); }
-  disconnectedCallback() { clearInterval(this.fitTimer); }
+  connectedCallback() { this.syncNav(); this.startFit(); }
+  disconnectedCallback() { this.stopFit(); }
+  startFit() { if (this.shadowRoot && !this.unfit) this.unfit = fit(this); }
+  stopFit() { this.unfit?.(); this.unfit = null; }
 
   /* HA keeps views alive, so the header is refreshed each time the card is shown. */
   syncNav() {

@@ -26,8 +26,6 @@ export class LamplightInfoCard extends LamplightCard {
   build() {
     this.built = true;
     this.shell('Assistant', '<main></main>', { extra: '<button class="keep" data-act="keep"></button>' });
-    this.fit = () => requestAnimationFrame(() => this.fitText());
-    window.addEventListener('resize', this.fit);
   }
 
   update() {
@@ -38,7 +36,7 @@ export class LamplightInfoCard extends LamplightCard {
     this.sig = sig; this.render();
   }
 
-  disconnectedCallback() { super.disconnectedCallback(); window.removeEventListener('resize', this.fit); }
+  resized() { this.fitText(); }
 
   backLabel() {
     if (window.lamplightNav?.backLabel) return window.lamplightNav.backLabel();
