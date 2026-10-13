@@ -115,6 +115,13 @@ categories:
 
 `run` sends different text from what's shown, `agent` sends one example to another agent, and `note` adds a small line.
 
+To stop taps running anything while you have visitors, point `read_only_entity` at an on/off entity. While it's on, the
+examples still show (as "Start with *wake phrase*, then say it") but tapping one does nothing:
+
+```yaml
+read_only_entity: input_boolean.guest_mode
+```
+
 ### Info
 
 ```yaml

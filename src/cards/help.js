@@ -18,6 +18,7 @@
  *         - say: remember that…
  *           tap: false            # shown, not run (it needs your own words)
  * `run` is sent instead of `say` when they differ; `agent` sends one example to another agent; `note` adds a small line.
+ *   read_only_entity: input_boolean.visitors     # optional: while it's on, the examples show but a tap runs nothing
  */
 import { LamplightCard, define, esc } from '../core.js';
 
@@ -34,6 +35,9 @@ export class LamplightHelpCard extends LamplightCard {
   }
   defaults() { return { agent_id: 'conversation.home_assistant', wake_phrase: 'Okay Nabu', rooms: {} }; }
   get cats() { return this.config.categories; }
+  /* Read-only (guests in, say): the page is a list of what to say, and nothing runs from a tap. */
+  get readOnly() { return this.st(this.config.read_only_entity)?.state === 'on'; }
+  get subText() { return this.readOnly ? `Start with "${this.config.wake_phrase}", then say it` : 'Tap an example to try it for real'; }
   get roomName() { return this.config.rooms[this.vaSensor] || ''; }
   fill(text) { return this.roomName ? text.replace(/\{room\}/g, this.roomName) : text.replace(/,? in the \{room\}/g, '').replace(/\{room\}/g, 'here'); }
 
@@ -41,9 +45,16 @@ export class LamplightHelpCard extends LamplightCard {
     this.built = true;
     this.shell(this.config.title || 'What can I say?', `<main><nav class="cats-wrap" aria-label="Categories"><div class="cats scroll" role="tablist"></div>
         <span class="fade" hidden><ha-icon icon="mdi:chevron-down"></ha-icon>More</span></nav><section class="panel"></section></main>`,
-    { sub: 'Tap an example to try it for real' });
+    { sub: this.subText });
     this.shadowRoot.addEventListener('scroll', (ev) => this.fadeFor(ev.target), true);
+    this.shownReadOnly = this.readOnly;
     this.renderCats(); this.renderPanel();
+  }
+
+  update() {
+    if (this.readOnly === this.shownReadOnly) return;
+    this.shownReadOnly = this.readOnly; this.disarm();
+    this.setSub(this.subText); this.renderPanel();
   }
   disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.armTimer); }
 
@@ -65,7 +76,8 @@ export class LamplightHelpCard extends LamplightCard {
   renderPanel() {
     const c = this.cats[this.sel]; const wake = esc(`${this.config.wake_phrase},`);
     const say = (e) => `<span class="say"><em>${wake}</em> ${esc(this.fill(e.say))}${e.note ? `<small>${esc(e.note)}</small>` : ''}</span>`;
-    const rows = (c.examples || []).map((e, i) => (e.tap === false ? `<div class="ex still">${say(e)}</div>`
+    const still = this.readOnly;
+    const rows = (c.examples || []).map((e, i) => (e.tap === false || still ? `<div class="ex still">${say(e)}</div>`
       : `<button class="ex" data-act="try" data-i="${i}">${say(e)}<span class="go"><ha-icon icon="mdi:play"></ha-icon></span></button>`)).join('');
     this.shadowRoot.querySelector('.panel').innerHTML = `<div class="p-head"><span class="disc"><ha-icon icon="${esc(c.icon || 'mdi:comment-text-outline')}"></ha-icon></span>
         <div class="p-title"><h2>${esc(c.name)}</h2>${c.hint ? `<span>${esc(c.hint)}</span>` : ''}</div></div>
@@ -95,7 +107,7 @@ export class LamplightHelpCard extends LamplightCard {
   }
 
   async tryExample(i, btn) {
-    if (this.asking) return;
+    if (this.asking || this.readOnly) return;
     const ex = this.cats[this.sel].examples[i]; if (!ex) return;
     if (ex.confirm && this.armed !== `${this.sel}:${i}`) { this.arm(`${this.sel}:${i}`, btn); return; }
     this.disarm();

@@ -555,6 +555,13 @@ var LamplightHelpCard = class extends LamplightCard {
   get cats() {
     return this.config.categories;
   }
+  /* Read-only (guests in, say): the page is a list of what to say, and nothing runs from a tap. */
+  get readOnly() {
+    return this.st(this.config.read_only_entity)?.state === "on";
+  }
+  get subText() {
+    return this.readOnly ? `Start with "${this.config.wake_phrase}", then say it` : "Tap an example to try it for real";
+  }
   get roomName() {
     return this.config.rooms[this.vaSensor] || "";
   }
@@ -567,10 +574,18 @@ var LamplightHelpCard = class extends LamplightCard {
       this.config.title || "What can I say?",
       `<main><nav class="cats-wrap" aria-label="Categories"><div class="cats scroll" role="tablist"></div>
         <span class="fade" hidden><ha-icon icon="mdi:chevron-down"></ha-icon>More</span></nav><section class="panel"></section></main>`,
-      { sub: "Tap an example to try it for real" }
+      { sub: this.subText }
     );
     this.shadowRoot.addEventListener("scroll", (ev) => this.fadeFor(ev.target), true);
+    this.shownReadOnly = this.readOnly;
     this.renderCats();
+    this.renderPanel();
+  }
+  update() {
+    if (this.readOnly === this.shownReadOnly) return;
+    this.shownReadOnly = this.readOnly;
+    this.disarm();
+    this.setSub(this.subText);
     this.renderPanel();
   }
   disconnectedCallback() {
@@ -596,7 +611,8 @@ var LamplightHelpCard = class extends LamplightCard {
     const c = this.cats[this.sel];
     const wake = esc(`${this.config.wake_phrase},`);
     const say = (e) => `<span class="say"><em>${wake}</em> ${esc(this.fill(e.say))}${e.note ? `<small>${esc(e.note)}</small>` : ""}</span>`;
-    const rows = (c.examples || []).map((e, i) => e.tap === false ? `<div class="ex still">${say(e)}</div>` : `<button class="ex" data-act="try" data-i="${i}">${say(e)}<span class="go"><ha-icon icon="mdi:play"></ha-icon></span></button>`).join("");
+    const still = this.readOnly;
+    const rows = (c.examples || []).map((e, i) => e.tap === false || still ? `<div class="ex still">${say(e)}</div>` : `<button class="ex" data-act="try" data-i="${i}">${say(e)}<span class="go"><ha-icon icon="mdi:play"></ha-icon></span></button>`).join("");
     this.shadowRoot.querySelector(".panel").innerHTML = `<div class="p-head"><span class="disc"><ha-icon icon="${esc(c.icon || "mdi:comment-text-outline")}"></ha-icon></span>
         <div class="p-title"><h2>${esc(c.name)}</h2>${c.hint ? `<span>${esc(c.hint)}</span>` : ""}</div></div>
       <div class="ex-wrap"><div class="exs scroll">${rows}${c.tip ? `<p class="tip"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon><span>${esc(c.tip)}</span></p>` : ""}</div>
@@ -627,7 +643,7 @@ var LamplightHelpCard = class extends LamplightCard {
     this.revealSelected();
   }
   async tryExample(i, btn) {
-    if (this.asking) return;
+    if (this.asking || this.readOnly) return;
     const ex = this.cats[this.sel].examples[i];
     if (!ex) return;
     if (ex.confirm && this.armed !== `${this.sel}:${i}`) {

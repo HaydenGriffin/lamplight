@@ -140,3 +140,29 @@ test('info: a reply that is not an answer shows "Didn\'t catch that" with the co
   location.search = '';
   card.disconnectedCallback();
 });
+
+test('help: while read_only_entity is on, the examples show but a tap runs nothing', async () => {
+  const states = { 'input_boolean.visitors': { state: 'on', attributes: {} } };
+  const hass = fakeHass(states, { ws: () => ({ response: { speech: { plain: { speech: 'Done' } } } }) });
+  const card = new lib.LamplightHelpCard();
+  card.setConfig({ wake_phrase: 'Hey Jarvis', read_only_entity: 'input_boolean.visitors',
+    categories: [{ name: 'Lights', examples: [{ say: 'turn on the lights' }] }] });
+  card.hass = hass;
+  const root = card.shadowRoot;
+  assert.doesNotMatch(root.querySelector('.panel').innerHTML, /data-act="try"/);
+  assert.match(root.querySelector('.panel').innerHTML, /class="ex still".*turn on the lights/s);
+  assert.match(root.innerHTML, /<span class="sub">Start with &quot;Hey Jarvis&quot;, then say it<\/span>/);
+  const btn = new HTMLElement(); btn.querySelector('.go');
+  await card.tryExample(0, btn);
+  assert.equal(hass.calls.length, 0);
+
+  states['input_boolean.visitors'] = { state: 'off', attributes: {} };
+  card.hass = hass;
+  assert.match(root.querySelector('.panel').innerHTML, /data-act="try"/);
+  assert.equal(root.querySelector('.sub').textContent, 'Tap an example to try it for real');
+  await card.tryExample(0, btn);
+  assert.equal(hass.calls[0].type, 'conversation/process');
+  assert.equal(hass.calls[0].text, 'turn on the lights');
+  card.hideToast?.(); clearTimeout(card.toastTimer);
+  card.disconnectedCallback();
+});
