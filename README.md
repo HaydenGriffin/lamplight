@@ -226,6 +226,11 @@ Help, a misfire); `npm run demo-icons` regenerates its icon set after you add an
 
 Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
+## Support
+
+Lamplight is free and open source. If it made your wall tablets better, you can
+[buy me a coffee](https://buymeacoffee.com/haydengriffin). Bug reports and pull requests are just as welcome.
+
 ## Licence
 
 [MIT](LICENSE). The bundled fonts are SIL OFL 1.1; see [NOTICE](NOTICE).
