@@ -1,7 +1,7 @@
-/* Lamplight 1.2.0 for Home Assistant. https://github.com/HaydenGriffin/lamplight (MIT). Built from src/ by scripts/build.mjs. */
+/* Lamplight 1.2.1 for Home Assistant. https://github.com/HaydenGriffin/lamplight (MIT). Built from src/ by scripts/build.mjs. */
 
 // src/core.js
-var VERSION = "1.2.0";
+var VERSION = "1.2.1";
 var fontBase = () => globalThis.lamplightFontBase || new URL(".", import.meta.url).href;
 var registerFonts = (base = fontBase()) => {
   if (document.getElementById("lamplight-fonts")) return;
@@ -922,6 +922,11 @@ define("lamplight-info-card", LamplightInfoCard, "Lamplight Info", "The assistan
 var RING_C = 2 * Math.PI * 30;
 var ARM_MS2 = 5e3;
 var UNDO_MIN_S = 30;
+var undoTime = (sec) => {
+  const s = Math.round(Math.max(UNDO_MIN_S, sec));
+  const parts = [[Math.floor(s / 3600), "hour"], [Math.floor(s % 3600 / 60), "minute"], [s % 60, "second"]];
+  return parts.filter(([n]) => n).map(([n, unit]) => `${n} ${unit}${n === 1 ? "" : "s"}`).join(" ");
+};
 var leftHtml = (sec) => {
   const s = Math.max(0, Math.ceil(sec));
   const h = Math.floor(s / 3600);
@@ -1104,7 +1109,7 @@ var LamplightTimersCard = class extends LamplightCard {
     const again = t.cls === "timer" && !t.paused && t.left > 0 ? () => this.call("view_assist", "set_timer", {
       entity_id: this.vaSensor,
       type: "timer",
-      time: `${Math.round(Math.max(UNDO_MIN_S, t.left))} seconds`,
+      time: undoTime(t.left),
       ...t.name ? { name: t.name } : {}
     }, `${label} back on`) : null;
     this.call("view_assist", "cancel_timer", { timer_id: t.id }, `${label} cancelled`, again);

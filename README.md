@@ -13,6 +13,9 @@ Type is big, targets are few and large, and every page fits one screen with no s
 **[Try the demo →](https://haydengriffin.github.io/lamplight/)** All six cards run on a made-up home there, with a
 stand-in Home Assistant.
 
+**On a TV:** [Lamplight for PS5](https://github.com/HaydenGriffin/lamplight-ps5) draws the same pages, colours and
+rules natively on a (jailbroken) PS5, driven with the controller, and shows Home Assistant's notifications over games.
+
 ## The design system
 
 [`DESIGN.md`](DESIGN.md) is the full system: the tokens, type scale, layout, components and the rules behind them. A few

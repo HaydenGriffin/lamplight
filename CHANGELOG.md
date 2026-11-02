@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 (2 November 2026)
+
+**Undo on Timers works with View Assist.** Undo set the timer again as "270 seconds", and View Assist sets nothing for
+seconds past 59, so the timer didn't come back. It now says "4 minutes 30 seconds" (hours, minutes and seconds, at
+least 30 seconds), which View Assist accepts. Found while building Lamplight for PS5.
+
 ## 1.2.0 (13 October 2026)
 
 **Load states.** A card that fetches something now says whether it is loading, failed, empty or ready. When the

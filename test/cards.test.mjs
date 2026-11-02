@@ -209,7 +209,8 @@ test('timers: paused rows, Undo on a cancelled timer, and the two-tap arm for al
   const again = hass.calls.at(-1);
   assert.equal(again.service, 'set_timer');
   assert.equal(again.data.name, 'pasta');
-  assert.match(again.data.time, /^(269|270) seconds$/);
+  // View Assist sets nothing for "270 seconds" (seconds past 59), so Undo says it in minutes and seconds.
+  assert.match(again.data.time, /^4 minutes (29|30) seconds$/);
 
   const before = hass.calls.length;
   root.tap({ act: 'cancel', arg: 'a1', name: 'Wake up' });
@@ -220,4 +221,12 @@ test('timers: paused rows, Undo on a cancelled timer, and the two-tap arm for al
   assert.deepEqual(hass.calls.at(-1).data, { timer_id: 'a1' });
   assert.doesNotMatch(root.querySelector('.toast').innerHTML, /Undo/);
   card.disconnectedCallback();
+});
+
+test('timers: undoTime is in hours, minutes and seconds, at least 30 seconds', async () => {
+  const { undoTime } = await import('../src/cards/timers.js');
+  assert.equal(undoTime(12), '30 seconds');
+  assert.equal(undoTime(741.4), '12 minutes 21 seconds');
+  assert.equal(undoTime(3601), '1 hour 1 second');
+  assert.equal(undoTime(120), '2 minutes');
 });

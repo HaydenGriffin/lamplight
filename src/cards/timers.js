@@ -14,6 +14,12 @@ import { LamplightCard, cap, dayStart, define, esc } from '../core.js';
 const RING_C = 2 * Math.PI * 30;
 const ARM_MS = 5000;
 const UNDO_MIN_S = 30;
+/* View Assist's time for Undo: "4 minutes 30 seconds", never "270 seconds" (it sets nothing for seconds past 59). */
+export const undoTime = (sec) => {
+  const s = Math.round(Math.max(UNDO_MIN_S, sec));
+  const parts = [[Math.floor(s / 3600), 'hour'], [Math.floor((s % 3600) / 60), 'minute'], [s % 60, 'second']];
+  return parts.filter(([n]) => n).map(([n, unit]) => `${n} ${unit}${n === 1 ? '' : 's'}`).join(' ');
+};
 /* Time left, in words so it can't be read as a time of day: "1 h 05 min", "17 min 39 s", "45 s". */
 const leftHtml = (sec) => {
   const s = Math.max(0, Math.ceil(sec)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const x = s % 60;
@@ -157,7 +163,7 @@ export class LamplightTimersCard extends LamplightCard {
   cancel(t, name) {
     const label = cap(name || 'Timer');
     const again = t.cls === 'timer' && !t.paused && t.left > 0 ? () => this.call('view_assist', 'set_timer', {
-      entity_id: this.vaSensor, type: 'timer', time: `${Math.round(Math.max(UNDO_MIN_S, t.left))} seconds`, ...(t.name ? { name: t.name } : {}) }, `${label} back on`) : null;
+      entity_id: this.vaSensor, type: 'timer', time: undoTime(t.left), ...(t.name ? { name: t.name } : {}) }, `${label} back on`) : null;
     this.call('view_assist', 'cancel_timer', { timer_id: t.id }, `${label} cancelled`, again);
   }
 
